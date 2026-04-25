@@ -18,7 +18,7 @@ usage() {
 Usage: bash scripts/server_master_run.sh [options]
 
 Recommended first server run:
-  bash scripts/server_master_run.sh --download public --smoke-only
+  CLD_TRANS_SKIP_TORCH_INSTALL=1 bash scripts/server_master_run.sh --download none --smoke-only
 
 Full public dataset download plus Stage 1 launch:
   CLD_TRANS_SKIP_TORCH_INSTALL=1 bash scripts/server_master_run.sh --download all --run-stage1

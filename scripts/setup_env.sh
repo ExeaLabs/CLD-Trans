@@ -9,7 +9,8 @@ fi
 python -m pip install --upgrade pip
 
 if [[ "${CLD_TRANS_SKIP_TORCH_INSTALL:-0}" == "1" ]]; then
-  python -m pip install --no-user hydra-core numpy omegaconf torchdiffeq tqdm pytest ruff mypy
+  python -m pip install --no-user hydra-core numpy omegaconf tqdm pytest ruff mypy
+  python -m pip install --no-user --no-deps torchdiffeq
   python -m pip install --no-user -e . --no-deps
 else
   python -m pip install --no-user -e ".[dev]"
