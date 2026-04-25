@@ -13,10 +13,10 @@ MODE="${MODE:-fine_tune}"
 # Fast mode: apply Stage 2 dataset-specific throughput knobs tuned for ROCm.
 # Set USE_STAGE2_FAST=0 to disable.
 USE_STAGE2_FAST="${USE_STAGE2_FAST:-1}"
-STAGE2_FAST_COMMON_OVERRIDES="${STAGE2_FAST_COMMON_OVERRIDES:-train.num_workers=12 train.prefetch_factor=4 train.persistent_workers=true train.pin_memory=true train.log_interval=50}"
-STAGE2_FAST_OVERRIDES_CHBMIT="${STAGE2_FAST_OVERRIDES_CHBMIT:-train.batch_size=24}"
-STAGE2_FAST_OVERRIDES_PTBXL="${STAGE2_FAST_OVERRIDES_PTBXL:-train.batch_size=96}"
-STAGE2_FAST_OVERRIDES_SLEEPEDF="${STAGE2_FAST_OVERRIDES_SLEEPEDF:-train.batch_size=64}"
+STAGE2_FAST_COMMON_OVERRIDES="${STAGE2_FAST_COMMON_OVERRIDES:-train.num_workers=20 train.prefetch_factor=4 train.persistent_workers=true train.pin_memory=true train.log_interval=50}"
+STAGE2_FAST_OVERRIDES_CHBMIT="${STAGE2_FAST_OVERRIDES_CHBMIT:-train.batch_size=64}"
+STAGE2_FAST_OVERRIDES_PTBXL="${STAGE2_FAST_OVERRIDES_PTBXL:-train.batch_size=192}"
+STAGE2_FAST_OVERRIDES_SLEEPEDF="${STAGE2_FAST_OVERRIDES_SLEEPEDF:-train.batch_size=160}"
 
 # Additional free-form Hydra overrides appended to each Stage 2 train command.
 STAGE2_EXTRA_OVERRIDES="${STAGE2_EXTRA_OVERRIDES:-}"
