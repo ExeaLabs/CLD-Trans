@@ -10,6 +10,10 @@ import torch
 PY
 }
 
+in_managed_python_env() {
+  [[ -n "${VIRTUAL_ENV:-}" || -n "${CONDA_PREFIX:-}" ]]
+}
+
 resolve_torch_backend() {
   if [[ "${TORCH_BACKEND}" != "auto" ]]; then
     echo "${TORCH_BACKEND}"
@@ -60,7 +64,7 @@ install_torch() {
   python -m pip install --no-user torch --index-url "${index_url}"
 }
 
-if [[ -z "${VIRTUAL_ENV:-}" ]]; then
+if ! in_managed_python_env && ! have_existing_torch; then
   python -m venv .venv
   source .venv/bin/activate
 fi
