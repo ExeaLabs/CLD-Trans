@@ -16,12 +16,23 @@ model:
   hidden_dim: 64
   tau_max: 2.0
   top_k: 4
-  ode_solver: dopri5
+  ode_solver: rk4
 train:
   device: cuda
-  batch_size: 2
-  num_workers: 4
+  batch_size: 64
+  num_workers: 16
+  prefetch_factor: 4
+  compile: true
+  compile_mode: max-autotune
   lr: 3.0e-4
   epochs: 100
   max_steps: null
+  val_split: 0.1
+  monitor: val_loss
+  best_checkpoint_name: stage1_single_gpu_best.pt
   precision: bf16
+  early_stopping:
+    enabled: true
+    mode: min
+    patience: 5
+    min_delta: 1.0e-4

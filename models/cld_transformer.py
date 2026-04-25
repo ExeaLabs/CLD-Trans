@@ -89,6 +89,8 @@ class CLDTransformer(nn.Module):
         t_grid: torch.Tensor | None = None,
         mode: str = "fine_tune",
     ) -> dict[str, torch.Tensor | int]:
+        if mode not in {"pretrain_ldsem", "linear_probe", "fine_tune", "zero_shot"}:
+            raise ValueError(f"unknown forward mode: {mode}")
         vq, h = self._encode_per_channel(x)
         if t_grid is None:
             t_grid = torch.linspace(
@@ -112,21 +114,28 @@ class CLDTransformer(nn.Module):
         logits = self.head(pooled)
         focal_scores = -edges.tau.sum(dim=-1)
 
-        out: dict[str, torch.Tensor | int] = {
+        if mode == "pretrain_ldsem":
+            return {
+                "logits": logits,
+                "focal_scores": focal_scores,
+                "tau": edges.tau,
+                "edge_probs": edges.edge_probs,
+                "adjacency": edges.adjacency,
+                "latents": h,
+                "trajectory": ode_out.trajectory,
+                "nfe": ode_out.nfe,
+                "indices": vq["indices"].reshape(x.shape[0], x.shape[1], -1),
+                "reconstruction": vq["reconstruction"].reshape(x.shape[0], x.shape[1], -1),
+                "commit_loss": vq["commit_loss"],
+                "codebook_loss": vq["codebook_loss"],
+                "perplexity": vq["perplexity"],
+            }
+
+        return {
             "logits": logits,
             "focal_scores": focal_scores,
             "tau": edges.tau,
-            "edge_probs": edges.edge_probs,
-            "adjacency": edges.adjacency,
-            "latents": h,
-            "trajectory": ode_out.trajectory,
             "nfe": ode_out.nfe,
-            "indices": vq["indices"].reshape(x.shape[0], x.shape[1], -1),
-            "reconstruction": vq["reconstruction"].reshape(x.shape[0], x.shape[1], -1),
             "commit_loss": vq["commit_loss"],
             "codebook_loss": vq["codebook_loss"],
-            "perplexity": vq["perplexity"],
         }
-        if mode not in {"pretrain_ldsem", "linear_probe", "fine_tune", "zero_shot"}:
-            raise ValueError(f"unknown forward mode: {mode}")
-        return out

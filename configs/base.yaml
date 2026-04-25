@@ -29,12 +29,31 @@ model:
 train:
   device: cpu
   batch_size: 8
+  num_workers: 0
+  prefetch_factor: 4
+  pin_memory: true
+  persistent_workers: true
+  drop_last_train: true
   lr: 3.0e-4
   weight_decay: 1.0e-4
+  grad_clip_norm: 1.0
+  log_interval: 20
+  compile: false
+  compile_mode: default
+  matmul_precision: high
+  cudnn_benchmark: true
   max_steps: 5
   epochs: 1
+  val_split: 0.0
+  monitor: val_loss
+  best_checkpoint_name: stage_best.pt
   precision: fp32
   seeds: [42, 123, 7, 0, 256]
+  early_stopping:
+    enabled: false
+    mode: min
+    patience: 10
+    min_delta: 0.0
 
 loss:
   spectral_weight: 0.1
