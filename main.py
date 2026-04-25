@@ -71,15 +71,20 @@ def run_stage1(cfg: DictConfig) -> dict[str, float]:
         lr=float(cfg.train.lr),
         weight_decay=float(cfg.train.weight_decay),
     )
-    metrics = train_stage1_epoch(
-        model,
-        loader,
-        optimizer,
-        device,
-        max_steps=None if cfg.train.max_steps is None else int(cfg.train.max_steps),
-    )
-    print(OmegaConf.to_yaml(metrics))
-    return metrics
+    epochs = int(cfg.train.epochs)
+    last_metrics: dict[str, float] = {}
+    for epoch_index in range(epochs):
+        last_metrics = train_stage1_epoch(
+            model,
+            loader,
+            optimizer,
+            device,
+            max_steps=None if cfg.train.max_steps is None else int(cfg.train.max_steps),
+            epoch=epoch_index + 1,
+            num_epochs=epochs,
+        )
+        print(OmegaConf.to_yaml({"epoch": epoch_index + 1, **last_metrics}))
+    return last_metrics
 
 
 def run_stage2(cfg: DictConfig) -> dict[str, float]:
@@ -92,16 +97,21 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
         lr=float(cfg.train.lr),
         weight_decay=float(cfg.train.weight_decay),
     )
-    metrics = train_stage2_epoch(
-        model,
-        loader,
-        optimizer,
-        device,
-        mode=str(cfg.train.get("mode", "fine_tune")),
-        max_steps=None if cfg.train.max_steps is None else int(cfg.train.max_steps),
-    )
-    print(OmegaConf.to_yaml(metrics))
-    return metrics
+    epochs = int(cfg.train.epochs)
+    last_metrics: dict[str, float] = {}
+    for epoch_index in range(epochs):
+        last_metrics = train_stage2_epoch(
+            model,
+            loader,
+            optimizer,
+            device,
+            mode=str(cfg.train.get("mode", "fine_tune")),
+            max_steps=None if cfg.train.max_steps is None else int(cfg.train.max_steps),
+            epoch=epoch_index + 1,
+            num_epochs=epochs,
+        )
+        print(OmegaConf.to_yaml({"epoch": epoch_index + 1, **last_metrics}))
+    return last_metrics
 
 
 def _main(cfg: DictConfig) -> None:

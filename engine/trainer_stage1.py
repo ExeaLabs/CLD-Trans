@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import torch
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 from losses.ldsem_loss import LDSEMLoss
 from losses.regularizers import edge_sparsity_loss, ode_energy_loss, tau_smoothness_loss
@@ -28,13 +29,16 @@ def train_stage1_epoch(
     *,
     weights: Stage1Weights | None = None,
     max_steps: int | None = None,
+    epoch: int = 1,
+    num_epochs: int = 1,
 ) -> dict[str, float]:
     model.train()
     weights = Stage1Weights() if weights is None else weights
     ldsem = LDSEMLoss().to(device)
     totals: dict[str, float] = {}
     steps = 0
-    for batch in loader:
+    progress = tqdm(loader, desc=f"Stage1 Epoch {epoch}/{num_epochs}", leave=True)
+    for batch in progress:
         x = batch["x"].to(device)
         optimizer.zero_grad(set_to_none=True)
         out = model(x, mode="pretrain_ldsem")
@@ -52,6 +56,11 @@ def train_stage1_epoch(
         for key, value in {"loss": loss, "vq": vq_loss, "ldsem": causal, "reg": reg}.items():
             totals[key] = totals.get(key, 0.0) + float(value.detach().item())
         steps += 1
+        progress.set_postfix(
+            loss=f"{float(loss.detach().item()):.4f}",
+            vq=f"{float(vq_loss.detach().item()):.4f}",
+            ldsem=f"{float(causal.detach().item()):.4f}",
+        )
         if max_steps is not None and steps >= max_steps:
             break
     return {key: value / max(steps, 1) for key, value in totals.items()}
