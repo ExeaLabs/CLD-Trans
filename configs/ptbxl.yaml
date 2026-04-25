@@ -14,6 +14,8 @@ model:
   num_classes: 5
   tau_max: 0.08
 train:
+  device: cuda
+  precision: bf16
   batch_size: 64
   lr: 1.0e-4
   epochs: 60
