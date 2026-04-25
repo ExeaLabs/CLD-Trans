@@ -98,7 +98,14 @@ class CLDOdeBlock(nn.Module):
             raise ValueError("time_grid must have shape [T]")
         if time_grid.numel() < 1:
             raise ValueError("time_grid cannot be empty")
-        time_grid = time_grid.to(device=h0.device, dtype=h0.dtype)
+        time_grid = time_grid.to(device=h0.device, dtype=torch.float32)
+        if time_grid.numel() > 1:
+            # torchdiffeq requires strict monotonicity; bf16 quantization can collapse adjacent points.
+            start = float(time_grid[0].item())
+            end = float(time_grid[-1].item())
+            if end <= start:
+                raise ValueError("time_grid endpoints must be strictly increasing")
+            time_grid = torch.linspace(start, end, time_grid.numel(), device=h0.device, dtype=torch.float32)
         self.func.set_context(adjacency, time_grid)
 
         if _has_torchdiffeq() and self.solver in {"dopri5", "rk4", "euler", "midpoint"}:

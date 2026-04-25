@@ -98,11 +98,11 @@ class CLDTransformer(nn.Module):
                 x.shape[-1] / self.config.sample_rate,
                 h.shape[2],
                 device=x.device,
-                dtype=h.dtype,
+                dtype=torch.float32,
             )
         else:
             t_grid = torch.nn.functional.interpolate(
-                t_grid.reshape(1, 1, -1).to(device=x.device, dtype=h.dtype),
+                t_grid.reshape(1, 1, -1).to(device=x.device, dtype=torch.float32),
                 size=h.shape[2],
                 mode="linear",
                 align_corners=True,
