@@ -29,7 +29,7 @@ actionable**. Concretely:
    driving a **lagged edge scorer**, and a **graph-conditioned Neural ODE**
    that integrates latent state through the inferred A(t).
 3. **Foundation-scale pretraining (§5).** The motif VQ-VAE would be pretrained on
-   **TUH-EEG (~26k recordings)** and **MIMIC-IV-ECG (~800k ECGs)**; CHB-MIT,
+  **EEGMMIDB (>1.5k public EEG recordings)** and **MIMIC-IV-ECG (~800k ECGs)**; CHB-MIT,
    PTB-XL, and Sleep-EDF serve as downstream **few- and zero-shot** transfer
    benchmarks.
 4. **Headline empirical result (§6).** **Zero-shot focal-lead localization
@@ -113,8 +113,8 @@ Pretraining uses the full open corpora; data lives on the training server's
 
 | Corpus | Modality | Scale | Use |
 |--------|----------|------:|-----|
-| TUH-EEG Corpus | EEG | ~26k recordings | Stage-1 motif VQ + LD-SEM lag pretraining |
-| MIMIC-IV-ECG | ECG | ~800k ECGs | Stage-1 motif VQ + LD-SEM lag pretraining |
+| EEG Motor Movement/Imagery Dataset (EEGMMIDB) | EEG | >1.5k 64-channel recordings | Stage-1 motif VQ + LD-SEM lag pretraining |
+| MIMIC-IV-ECG | ECG | ~800k open-access ECGs | Stage-1 motif VQ + LD-SEM lag pretraining |
 
 ### 5.2 Downstream Benchmarks
 | Dataset   | Channels | Task | Regime |
@@ -275,7 +275,7 @@ Pretraining uses the full open corpora; data lives on the training server's
 - All code released under MIT in `CLD-Trans/`.
 - Pure Python `venv` setup; PyTorch ROCm wheel for AMD MI300X (CUDA wheel
   for users on NVIDIA hardware).
-- Pretrained motif VQ-VAE checkpoints released for TUH-EEG and
+- Pretrained motif VQ-VAE checkpoints released for EEGMMIDB and
   MIMIC-IV-ECG corpora.
 - Per-seed JSON metrics in `results/`; logs in `logs/`.
 - `scripts/make_figures.sh` reproduces every figure end-to-end.

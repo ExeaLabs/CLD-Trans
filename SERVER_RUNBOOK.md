@@ -25,15 +25,18 @@ If the server already has a working ROCm PyTorch installation, use:
 CLD_TRANS_SKIP_TORCH_INSTALL=1 bash scripts/server_master_run.sh --download public --smoke-only
 ```
 
-## 3. Restricted datasets
+## 3. Public pretraining datasets
 
-MIMIC-IV-ECG and TUH-EEG may require credentials, licenses, or an institution
-mirror. Configure AWS access first, then provide any required bucket overrides:
+MIMIC-IV-ECG v1.0 is open access on PhysioNet. TUH-EEG has been replaced in the
+default scripts by the public EEG Motor Movement/Imagery Dataset (EEGMMIDB):
+109 subjects, over 1500 one- and two-minute 64-channel EEG recordings, sampled at
+160 Hz.
+
+The default public S3 sources are:
 
 ```bash
-export AWS_PROFILE_NAME=my-aws-profile
-export TUH_EEG_S3_URI=s3://your-licensed-tuh-eeg-mirror/
-bash scripts/server_master_run.sh --download all --smoke-only
+MIMIC_IV_ECG_S3_URI=s3://physionet-open/mimic-iv-ecg/1.0/
+EEGMMIDB_S3_URI=s3://physionet-open/eegmmidb/1.0.0/
 ```
 
 The default dataset root is `/scratch/cld-trans/datasets/`.
@@ -57,5 +60,6 @@ GPUS=8 CONFIG=stage1_server bash scripts/train_stage1.sh
 ```bash
 bash scripts/download_datasets_aws.sh --help
 bash scripts/download_datasets_aws.sh --only chbmit
-bash scripts/download_datasets_aws.sh --include-restricted
+bash scripts/download_datasets_aws.sh --only eegmmidb
+bash scripts/download_datasets_aws.sh --only mimic-iv-ecg
 ```

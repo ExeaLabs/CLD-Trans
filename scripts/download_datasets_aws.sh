@@ -4,9 +4,8 @@ set -euo pipefail
 # Download CLD-Trans datasets to the server scratch volume with AWS CLI.
 #
 # Public PhysioNet datasets can usually be downloaded with --no-sign-request.
-# Credentialed datasets (for example MIMIC-IV-ECG) require that the person
-# running this script has accepted the relevant data-use agreement and has AWS
-# credentials configured for the account/profile that has access.
+# MIMIC-IV-ECG v1.0 is open access on PhysioNet. EEG Motor Movement/Imagery
+# Dataset (EEGMMIDB) replaces TUH-EEG here because it has public AWS access.
 
 SCRATCH_ROOT="${SCRATCH_ROOT:-/scratch/cld-trans}"
 DATA_ROOT="${DATA_ROOT:-${SCRATCH_ROOT}/datasets}"
@@ -15,7 +14,6 @@ LOG_DIR="${LOG_DIR:-${SCRATCH_ROOT}/logs/downloads}"
 AWS_PROFILE_NAME="${AWS_PROFILE_NAME:-}"
 AWS_REGION_NAME="${AWS_REGION_NAME:-us-east-1}"
 DRY_RUN=0
-INCLUDE_RESTRICTED=0
 ONLY_DATASET=""
 NO_SIGN_PUBLIC=1
 
@@ -25,7 +23,7 @@ CHBMIT_S3_URI="${CHBMIT_S3_URI:-s3://physionet-open/chbmit/1.0.0/}"
 PTBXL_S3_URI="${PTBXL_S3_URI:-s3://physionet-open/ptb-xl/1.0.3/}"
 SLEEPEDF_S3_URI="${SLEEPEDF_S3_URI:-s3://physionet-open/sleep-edfx/1.0.0/}"
 MIMIC_IV_ECG_S3_URI="${MIMIC_IV_ECG_S3_URI:-s3://physionet-open/mimic-iv-ecg/1.0/}"
-TUH_EEG_S3_URI="${TUH_EEG_S3_URI:-}"
+EEGMMIDB_S3_URI="${EEGMMIDB_S3_URI:-s3://physionet-open/eegmmidb/1.0.0/}"
 
 usage() {
   cat <<'EOF'
@@ -35,25 +33,26 @@ Options:
   --scratch-root PATH       Root scratch directory. Default: /scratch/cld-trans
   --data-root PATH          Dataset directory. Default: $SCRATCH_ROOT/datasets
   --only NAME               Download one dataset: chbmit, ptbxl, sleepedf,
-                            mimic-iv-ecg, or tuh-eeg
-  --include-restricted      Also attempt credentialed/restricted datasets.
+                            mimic-iv-ecg, or eegmmidb
+  --include-restricted      Accepted for backward compatibility; ignored because
+                            the current default dataset list is all public.
   --signed-public           Do not pass --no-sign-request for public datasets.
   --dry-run                 Show AWS sync actions without downloading.
   -h, --help                Show this help.
 
 Environment overrides:
-  AWS_PROFILE_NAME          AWS profile to use for signed/credentialed syncs.
+  AWS_PROFILE_NAME          Optional AWS profile to use for signed syncs.
   AWS_REGION_NAME           AWS region. Default: us-east-1
   CHBMIT_S3_URI             Default: s3://physionet-open/chbmit/1.0.0/
   PTBXL_S3_URI              Default: s3://physionet-open/ptb-xl/1.0.3/
   SLEEPEDF_S3_URI           Default: s3://physionet-open/sleep-edfx/1.0.0/
   MIMIC_IV_ECG_S3_URI       Default: s3://physionet-open/mimic-iv-ecg/1.0/
-  TUH_EEG_S3_URI            No public default; set to your licensed mirror.
+  EEGMMIDB_S3_URI           Default: s3://physionet-open/eegmmidb/1.0.0/
 
 Notes:
-  - CHB-MIT, PTB-XL, and Sleep-EDF are treated as public PhysioNet downloads.
-  - MIMIC-IV-ECG is usually credentialed; access must be configured first.
-  - TUH-EEG is licensed and has no universal public S3 URI; set TUH_EEG_S3_URI.
+  - CHB-MIT, PTB-XL, Sleep-EDF, MIMIC-IV-ECG v1.0, and EEGMMIDB are treated as
+    public PhysioNet downloads.
+  - EEGMMIDB is the public EEG pretraining substitute for TUH-EEG.
 EOF
 }
 
@@ -76,7 +75,6 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --include-restricted)
-      INCLUDE_RESTRICTED=1
       shift
       ;;
     --signed-public)
@@ -140,11 +138,6 @@ sync_dataset() {
     echo "Skipping ${name}: no S3 URI configured."
     return 0
   fi
-  if [[ "${mode}" == "restricted" && "${INCLUDE_RESTRICTED}" != "1" ]]; then
-    echo "Skipping ${name}: pass --include-restricted after configuring credentials/access."
-    return 0
-  fi
-
   mkdir -p "${target_dir}" "${LOG_DIR}"
   local log_file="${LOG_DIR}/${name}-$(date +%Y%m%d-%H%M%S).log"
   echo "============================================================"
@@ -183,8 +176,8 @@ echo "Free space  : $(df -h "${DATA_ROOT}" | awk 'NR==2 {print $4 " available on
 sync_dataset "chbmit" "${CHBMIT_S3_URI}" "${DATA_ROOT}/chb-mit" "public"
 sync_dataset "ptbxl" "${PTBXL_S3_URI}" "${DATA_ROOT}/ptb-xl" "public"
 sync_dataset "sleepedf" "${SLEEPEDF_S3_URI}" "${DATA_ROOT}/sleep-edf" "public"
-sync_dataset "mimic-iv-ecg" "${MIMIC_IV_ECG_S3_URI}" "${DATA_ROOT}/mimic-iv-ecg" "restricted"
-sync_dataset "tuh-eeg" "${TUH_EEG_S3_URI}" "${DATA_ROOT}/tuh-eeg" "restricted"
+sync_dataset "mimic-iv-ecg" "${MIMIC_IV_ECG_S3_URI}" "${DATA_ROOT}/mimic-iv-ecg" "public"
+sync_dataset "eegmmidb" "${EEGMMIDB_S3_URI}" "${DATA_ROOT}/eegmmidb" "public"
 
 echo "Dataset download script complete."
-echo "If restricted datasets were skipped, configure access and rerun with --include-restricted."
+echo "All default datasets are public/open-access PhysioNet datasets."

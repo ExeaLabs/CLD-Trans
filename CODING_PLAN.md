@@ -17,7 +17,7 @@
   methodological contribution. Every module must support a clean test of
   that theorem on synthetic data **before** it is run on real biosignals.
 - **Two-stage training**: Stage 1 jointly pretrains the motif VQ-VAE *and*
-  the LD-SEM lag inferencer on **TUH-EEG + MIMIC-IV-ECG** with no labels;
+  the LD-SEM lag inferencer on **EEGMMIDB + MIMIC-IV-ECG** with no labels;
   Stage 2 attaches task heads for few-/zero-shot downstream evaluation.
 - **Determinism & reproducibility**: 5-seed protocol (`42, 123, 7, 0, 256`).
 - **Environment**: plain Python `venv` + `pip` (or `uv`). The previous
@@ -37,7 +37,7 @@ CLD-Trans/
 │   ├── chbmit_loader.py           # downstream
 │   ├── ptbxl_loader.py            # downstream
 │   ├── sleepedf_loader.py         # downstream
-│   ├── tuh_eeg_loader.py          # pretraining (~26k recs)
+│   ├── eegmmidb_loader.py         # pretraining (>1.5k public EEG recs)
 │   ├── mimic_ecg_loader.py        # pretraining (~800k ECGs)
 │   ├── synthetic_ldsem.py         # ground-truth τ/W generators for theory
 │   └── transforms.py             # patching, normalization, augmentations
@@ -205,8 +205,8 @@ All datasets and caches live on the server's scratch SSD:
 │   ├── chb-mit/             # ~121 GB — downstream + headline result
 │   ├── ptb-xl/              # ~3 GB  — records100 + records500
 │   ├── sleep-edf/           # ~8 GB  — sleep-cassette + telemetry
-│   ├── tuh-eeg/             # ~600 GB — full TUH-EEG corpus
-│   └── mimic-iv-ecg/        # ~200 GB — full MIMIC-IV-ECG
+│   ├── eegmmidb/            # ~3.4 GB — public EEG Motor Movement/Imagery
+│   └── mimic-iv-ecg/        # ~90 GB — open-access MIMIC-IV-ECG v1.0
 ├── cache/
 │   ├── motif_indices/       # int16 token shards from Stage 1
 │   └── stats/               # per-channel normalization stats
@@ -215,7 +215,7 @@ All datasets and caches live on the server's scratch SSD:
     └── stage2/              # downstream fine-tunes
 ```
 
-With ~1 TB raw data + a few hundred GB of caches/checkpoints, the 40 TB
+With ~225 GB raw downstream + pretraining data plus caches/checkpoints, the 40 TB
 scratch is comfortably sized; **no streaming or subsetting is required**.
 The boot NVMe (2 TB) hosts only the venv and code.
 
@@ -224,7 +224,7 @@ The boot NVMe (2 TB) hosts only the venv and code.
 ## 5. Training Protocol
 
 ### Stage 1 — Foundation-Scale Pretraining (no labels)
-- **Corpora**: full **TUH-EEG (~26k recordings)** for the EEG branch and
+- **Corpora**: full **EEGMMIDB (>1.5k 64-channel recordings)** for the EEG branch and
   full **MIMIC-IV-ECG (~800k ECGs)** for the ECG branch; per-modality
   codebooks plus an ablation with a shared cross-modality codebook.
 - **Objective**: VQ recon + codebook + LD-SEM NLL + sparsity/smoothness regs.
@@ -250,7 +250,7 @@ The boot NVMe (2 TB) hosts only the venv and code.
 ### Scripts
 - `scripts/setup_env.sh`: `python -m venv .venv && pip install -r requirements.txt`
   (PyTorch ROCm wheel for MI300X).
-- `scripts/train_stage1.sh`: pretrain on full TUH-EEG + MIMIC-IV-ECG with
+- `scripts/train_stage1.sh`: pretrain on full EEGMMIDB + MIMIC-IV-ECG with
   `torchrun --nproc-per-node=8`.
 - `scripts/eval_zero_shot.sh`: CHB-MIT focal-lead headline result.
 - `scripts/train_stage2.sh`: linear probe + few-shot fine-tune sweeps.
@@ -283,7 +283,7 @@ All metrics are reported as `mean ± 95% CI` over the 5 seeds (BCa bootstrap,
 | A2 — +Integer lag (DYNOTEARS-style) | ✓ | int | ✗ | downstream-only |
 | A3 — +Continuous τ, no ODE | ✓ | ✓ | ✗ | downstream-only |
 | A4 — Full CLD-Trans, downstream-only | ✓ | ✓ | ✓ | downstream-only |
-| A5 — Full CLD-Trans, foundation pretrain | ✓ | ✓ | ✓ | TUH+MIMIC |
+| A5 — Full CLD-Trans, foundation pretrain | ✓ | ✓ | ✓ | EEGMMIDB+MIMIC |
 
 A5 is the headline configuration; A0–A4 are ablations. Each variant runs the
 full 5-seed protocol on each downstream dataset.
@@ -309,7 +309,7 @@ full 5-seed protocol on each downstream dataset.
 | Synthetic→real gap on focal-lead localization | Med | Pre-registered fall-back: report linear-probe focal-lead accuracy if zero-shot fails |
 | ODE solver instability on long EEG windows | Med | Use adjoint + step-size caps; fall back to `rk4` fixed-step |
 | Codebook collapse | Med | EMA updates + dead-code revival + entropy bonus |
-| Pretraining compute cost (TUH+MIMIC) | Low | 8× MI300X (1.5 TB VRAM) handles full corpora; FSDP + bf16 keeps memory headroom |
+| Pretraining compute cost (EEGMMIDB+MIMIC) | Low | 8× MI300X (1.5 TB VRAM) handles full corpora; FSDP + bf16 keeps memory headroom |
 | ROCm wheel / kernel quirks | Med | Pin PyTorch ROCm version; smoke-test FFT, scatter, and `torchdiffeq` adjoint on the MI300X early |
 | Class imbalance (CHB-MIT seizures) | High | Focal loss + balanced sampler + per-subject thresholds |
 
@@ -317,11 +317,11 @@ full 5-seed protocol on each downstream dataset.
 
 ## 10. Milestone Timeline (engineering only — no calendar dates)
 
-1. **M1** — Repo scaffold, data loaders (incl. TUH-EEG, MIMIC-IV-ECG,
+1. **M1** — Repo scaffold, data loaders (incl. EEGMMIDB, MIMIC-IV-ECG,
    synthetic LD-SEM), smoke tests green.
 2. **M2** — Synthetic LD-SEM identifiability validated: τ / edge-support
    recovered to within published tolerance, matching the theorem.
-3. **M3** — Stage-1 pretraining on TUH-EEG + MIMIC-IV-ECG completed; motif
+3. **M3** — Stage-1 pretraining on EEGMMIDB + MIMIC-IV-ECG completed; motif
    atlas figure ready.
 4. **M4** — Zero-shot CHB-MIT focal-lead localization beats baselines.
 5. **M5** — Few-shot transfer matrix on PTB-XL / Sleep-EDF complete.

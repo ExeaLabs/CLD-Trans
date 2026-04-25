@@ -5,7 +5,7 @@ for continuous-lag causal discovery and representation learning on multivariate
 physiological signals.
 
 This repository is initialized to run locally for smoke tests and on the target
-8× AMD MI300X server for full TUH-EEG + MIMIC-IV-ECG pretraining. Datasets are
+8× AMD MI300X server for EEGMMIDB + MIMIC-IV-ECG pretraining. Datasets are
 not committed; by default scripts expect them under `/scratch/cld-trans/`.
 
 ## Quick start
@@ -52,8 +52,8 @@ bash scripts/server_master_run.sh --download public --smoke-only
 
 Dataset downloads are handled by [scripts/download_datasets_aws.sh](scripts/download_datasets_aws.sh).
 Public PhysioNet datasets are downloaded with AWS `--no-sign-request` by default.
-Credentialed datasets such as MIMIC-IV-ECG and licensed TUH-EEG require AWS
-access or bucket overrides before running with `--download all`.
+MIMIC-IV-ECG v1.0 is open access, and EEGMMIDB is used as the public EEG
+pretraining dataset in place of TUH-EEG.
 
 See [SERVER_RUNBOOK.md](SERVER_RUNBOOK.md) for the full handoff instructions.
 

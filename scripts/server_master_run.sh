@@ -20,9 +20,8 @@ Usage: bash scripts/server_master_run.sh [options]
 Recommended first server run:
   bash scripts/server_master_run.sh --download public --smoke-only
 
-After restricted dataset access is configured:
-  AWS_PROFILE_NAME=my-profile TUH_EEG_S3_URI=s3://my-bucket/tuh-eeg/ \
-    bash scripts/server_master_run.sh --download all --run-stage1
+Full public dataset download plus Stage 1 launch:
+  CLD_TRANS_SKIP_TORCH_INSTALL=1 bash scripts/server_master_run.sh --download all --run-stage1
 
 Options:
   --scratch-root PATH       Scratch root. Default: /scratch/cld-trans
@@ -35,9 +34,9 @@ Options:
 
 Important environment variables:
   CLD_TRANS_SKIP_TORCH_INSTALL=1  Use server-provisioned ROCm PyTorch.
-  AWS_PROFILE_NAME                AWS profile for credentialed datasets.
+  AWS_PROFILE_NAME                Optional AWS profile for signed syncs.
   MIMIC_IV_ECG_S3_URI             Override MIMIC-IV-ECG S3 URI if needed.
-  TUH_EEG_S3_URI                  Required for TUH-EEG unless already present.
+  EEGMMIDB_S3_URI                 Override public EEGMMIDB S3 URI if needed.
 EOF
 }
 
@@ -136,7 +135,7 @@ download_datasets() {
       bash scripts/download_datasets_aws.sh --scratch-root "${SCRATCH_ROOT}"
       ;;
     all)
-      bash scripts/download_datasets_aws.sh --scratch-root "${SCRATCH_ROOT}" --include-restricted
+      bash scripts/download_datasets_aws.sh --scratch-root "${SCRATCH_ROOT}"
       ;;
     *)
       echo "Invalid download mode: ${DOWNLOAD_MODE}. Use none, public, or all." >&2

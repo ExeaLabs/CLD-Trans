@@ -61,7 +61,7 @@ assume integer lags and acyclicity. CLD-Trans is built to address the gap.
 | Lag granularity | n/a | integer samples | **sub-sample, differentiable** |
 | Temporal evolution | discrete attention | linear VAR | **graph-conditioned Neural ODE** |
 | Identifiability guarantee | none | classical (DAG, integer lag) | **non-Gaussian LD-SEM theorem** |
-| Pretraining scale | 10k–800k recordings | small | **TUH-EEG + MIMIC-IV-ECG** |
+| Pretraining scale | 1.5k–800k recordings | small | **EEGMMIDB + MIMIC-IV-ECG** |
 | Headline downstream claim | supervised AUROC | synthetic recovery | **zero-shot focal-lead localization on CHB-MIT** |
 
 ---
@@ -104,8 +104,9 @@ as $\arg\min_i \sum_j \tau_{ij}$.
 ## Datasets
 
 ### Pretraining (no labels)
-- **TUH-EEG Corpus** — ~26,000 EEG recordings; the largest open EEG corpus.
-- **MIMIC-IV-ECG** — ~800,000 12-lead ECGs from BIDMC patients.
+- **EEG Motor Movement/Imagery Dataset (EEGMMIDB)** — over 1,500 public
+  64-channel EEG recordings from 109 volunteers, sampled at 160 Hz.
+- **MIMIC-IV-ECG** — ~800,000 open-access 12-lead ECGs from BIDMC patients.
 
 Data lives on the training server's 40 TB scratch SSD; no streaming or
 subsetting is required.
