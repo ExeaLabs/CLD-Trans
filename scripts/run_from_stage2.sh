@@ -10,24 +10,27 @@ STAGE1_CKPT="${STAGE1_CKPT:-}"
 # Main stage2 mode: fine_tune or linear_probe.
 MODE="${MODE:-fine_tune}"
 
-# Heavy mode: apply Stage 1-style throughput knobs to Stage 2 runs.
-# Set USE_STAGE1_HEAVY=1 to enable.
-USE_STAGE1_HEAVY="${USE_STAGE1_HEAVY:-0}"
-STAGE1_HEAVY_OVERRIDES="${STAGE1_HEAVY_OVERRIDES:-train.batch_size=65 train.num_workers=20 train.prefetch_factor=4 train.log_interval=50}"
+# Fast mode: apply Stage 2 dataset-specific throughput knobs tuned for ROCm.
+# Set USE_STAGE2_FAST=0 to disable.
+USE_STAGE2_FAST="${USE_STAGE2_FAST:-1}"
+STAGE2_FAST_COMMON_OVERRIDES="${STAGE2_FAST_COMMON_OVERRIDES:-train.num_workers=12 train.prefetch_factor=4 train.persistent_workers=true train.pin_memory=true train.log_interval=50}"
+STAGE2_FAST_OVERRIDES_CHBMIT="${STAGE2_FAST_OVERRIDES_CHBMIT:-train.batch_size=24}"
+STAGE2_FAST_OVERRIDES_PTBXL="${STAGE2_FAST_OVERRIDES_PTBXL:-train.batch_size=96}"
+STAGE2_FAST_OVERRIDES_SLEEPEDF="${STAGE2_FAST_OVERRIDES_SLEEPEDF:-train.batch_size=64}"
 
 # Additional free-form Hydra overrides appended to each Stage 2 train command.
 STAGE2_EXTRA_OVERRIDES="${STAGE2_EXTRA_OVERRIDES:-}"
 
 # Space-separated lists.
 DATASETS="${DATASETS:-chbmit ptbxl sleepedf}"
-SEEDS="${SEEDS:-42 123 7 0 256}"
-LABEL_FRACTIONS="${LABEL_FRACTIONS:-1.0 0.1 0.01}"
+SEEDS="${SEEDS:-42}"
+LABEL_FRACTIONS="${LABEL_FRACTIONS:-1.0}"
 
 # Toggles.
 RUN_MAIN_SWEEP="${RUN_MAIN_SWEEP:-1}"
-RUN_FEWSHOT_SWEEP="${RUN_FEWSHOT_SWEEP:-1}"
-RUN_ZERO_SHOT="${RUN_ZERO_SHOT:-1}"
-RUN_SYNTHETIC="${RUN_SYNTHETIC:-1}"
+RUN_FEWSHOT_SWEEP="${RUN_FEWSHOT_SWEEP:-0}"
+RUN_ZERO_SHOT="${RUN_ZERO_SHOT:-0}"
+RUN_SYNTHETIC="${RUN_SYNTHETIC:-0}"
 RUN_FIGURES="${RUN_FIGURES:-0}"
 
 # Set to 1 to print commands without executing.
@@ -40,6 +43,24 @@ run_cmd() {
     return 0
   fi
   eval "${cmd}"
+}
+
+dataset_fast_overrides() {
+  local dataset="$1"
+  case "${dataset}" in
+    chbmit)
+      echo "${STAGE2_FAST_OVERRIDES_CHBMIT}"
+      ;;
+    ptbxl)
+      echo "${STAGE2_FAST_OVERRIDES_PTBXL}"
+      ;;
+    sleepedf)
+      echo "${STAGE2_FAST_OVERRIDES_SLEEPEDF}"
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
 }
 
 if [[ -z "${STAGE1_CKPT}" ]]; then
@@ -59,21 +80,19 @@ echo "[info] Mode: ${MODE}"
 echo "[info] Datasets: ${DATASETS}"
 echo "[info] Seeds: ${SEEDS}"
 echo "[info] Label fractions: ${LABEL_FRACTIONS}"
-echo "[info] USE_STAGE1_HEAVY: ${USE_STAGE1_HEAVY}"
-
-TRAIN_OVERRIDES="${STAGE2_EXTRA_OVERRIDES}"
-if [[ "${USE_STAGE1_HEAVY}" == "1" ]]; then
-  TRAIN_OVERRIDES="${STAGE1_HEAVY_OVERRIDES} ${TRAIN_OVERRIDES}"
-fi
-
-echo "[info] Stage2 train overrides: ${TRAIN_OVERRIDES:-<none>}"
+echo "[info] USE_STAGE2_FAST: ${USE_STAGE2_FAST}"
+echo "[info] Stage2 extra overrides: ${STAGE2_EXTRA_OVERRIDES:-<none>}"
 
 if [[ "${RUN_MAIN_SWEEP}" == "1" ]]; then
   echo "[stage2] Running full-label sweep (label_fraction=1.0)"
   for dataset in ${DATASETS}; do
     for seed in ${SEEDS}; do
-      if [[ -n "${TRAIN_OVERRIDES}" ]]; then
-        run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction=1.0 ${TRAIN_OVERRIDES}"
+      DATASET_OVERRIDES="${STAGE2_EXTRA_OVERRIDES}"
+      if [[ "${USE_STAGE2_FAST}" == "1" ]]; then
+        DATASET_OVERRIDES="${STAGE2_FAST_COMMON_OVERRIDES} $(dataset_fast_overrides "${dataset}") ${DATASET_OVERRIDES}"
+      fi
+      if [[ -n "${DATASET_OVERRIDES}" ]]; then
+        run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction=1.0 ${DATASET_OVERRIDES}"
       else
         run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction=1.0"
       fi
@@ -89,8 +108,12 @@ if [[ "${RUN_FEWSHOT_SWEEP}" == "1" ]]; then
     fi
     for dataset in ${DATASETS}; do
       for seed in ${SEEDS}; do
-        if [[ -n "${TRAIN_OVERRIDES}" ]]; then
-          run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}' ${TRAIN_OVERRIDES}"
+        DATASET_OVERRIDES="${STAGE2_EXTRA_OVERRIDES}"
+        if [[ "${USE_STAGE2_FAST}" == "1" ]]; then
+          DATASET_OVERRIDES="${STAGE2_FAST_COMMON_OVERRIDES} $(dataset_fast_overrides "${dataset}") ${DATASET_OVERRIDES}"
+        fi
+        if [[ -n "${DATASET_OVERRIDES}" ]]; then
+          run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}' ${DATASET_OVERRIDES}"
         else
           run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}'"
         fi
