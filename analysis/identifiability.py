@@ -5,7 +5,11 @@ from __future__ import annotations
 import torch
 
 
-def tau_mae(pred_tau: torch.Tensor, true_tau: torch.Tensor, graph: torch.Tensor | None = None) -> float:
+def tau_mae(
+    pred_tau: torch.Tensor,
+    true_tau: torch.Tensor,
+    graph: torch.Tensor | None = None,
+) -> float:
     if graph is not None:
         mask = graph.bool()
         if mask.any():

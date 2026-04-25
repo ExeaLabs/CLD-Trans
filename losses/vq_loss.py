@@ -35,4 +35,8 @@ def vq_total_loss(
     *,
     spectral_weight: float = 0.1,
 ) -> torch.Tensor:
-    return reconstruction_loss(x_hat, x, spectral_weight=spectral_weight) + commit_loss + codebook_loss
+    return (
+        reconstruction_loss(x_hat, x, spectral_weight=spectral_weight)
+        + commit_loss
+        + codebook_loss
+    )

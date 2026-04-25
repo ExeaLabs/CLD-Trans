@@ -48,15 +48,34 @@ def generate_ldsem_batch(
         generator = None
     device = torch.device("cpu") if device is None else device
     graph = _sample_graph(num_channels, edge_prob, device)
-    tau = torch.rand(num_channels, num_channels, generator=generator, device=device) * tau_max * graph
-    weights = (torch.randn(num_channels, num_channels, generator=generator, device=device) * 0.35) * graph
+    tau = (
+        torch.rand(num_channels, num_channels, generator=generator, device=device)
+        * tau_max
+        * graph
+    )
+    weights = (
+        torch.randn(num_channels, num_channels, generator=generator, device=device) * 0.35
+    ) * graph
     t_grid = torch.arange(num_steps, device=device, dtype=torch.float32) / sample_rate
 
-    innovations = torch.randn(batch_size, num_channels, num_steps, generator=generator, device=device) * noise_scale
+    innovations = (
+        torch.randn(
+            batch_size,
+            num_channels,
+            num_steps,
+            generator=generator,
+            device=device,
+        )
+        * noise_scale
+    )
     x = innovations.clone()
     base_freq = torch.linspace(1.0, 4.0, num_channels, device=device)
-    phase = torch.rand(batch_size, num_channels, 1, generator=generator, device=device) * 6.283185307
-    x = x + 0.1 * torch.sin(2 * torch.pi * base_freq[None, :, None] * t_grid[None, None, :] + phase)
+    phase = (
+        torch.rand(batch_size, num_channels, 1, generator=generator, device=device) * 6.283185307
+    )
+    x = x + 0.1 * torch.sin(
+        2 * torch.pi * base_freq[None, :, None] * t_grid[None, None, :] + phase
+    )
 
     # Fixed-point style simulation over a few passes keeps the data stable while
     # making the ground-truth fractional lags visible.
@@ -65,13 +84,25 @@ def generate_ldsem_batch(
         for target in range(num_channels):
             terms = []
             for source in range(num_channels):
-                shifted = delay_signal(x[:, source], tau[target, source], sample_rate=sample_rate, dim=-1)
+                shifted = delay_signal(
+                    x[:, source],
+                    tau[target, source],
+                    sample_rate=sample_rate,
+                    dim=-1,
+                )
                 terms.append(weights[target, source] * torch.tanh(shifted))
             delayed.append(torch.stack(terms, dim=1).sum(dim=1))
         x = innovations + 0.5 * torch.stack(delayed, dim=1)
 
     y = graph.sum(dim=-1).argmax().repeat(batch_size)
-    return SyntheticLDSEMBatch(x=x, y=y.long(), t_grid=t_grid, tau=tau, weights=weights, graph=graph)
+    return SyntheticLDSEMBatch(
+        x=x,
+        y=y.long(),
+        t_grid=t_grid,
+        tau=tau,
+        weights=weights,
+        graph=graph,
+    )
 
 
 class SyntheticLDSEMDataset(Dataset[dict[str, torch.Tensor]]):

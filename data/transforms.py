@@ -40,7 +40,12 @@ class Patchify:
         return x.unfold(dimension=-1, size=self.patch_size, step=self.stride)
 
 
-def make_time_grid(num_samples: int, sample_rate: float, *, device: torch.device | None = None) -> torch.Tensor:
+def make_time_grid(
+    num_samples: int,
+    sample_rate: float,
+    *,
+    device: torch.device | None = None,
+) -> torch.Tensor:
     """Return a physical time grid in seconds."""
 
     return torch.arange(num_samples, device=device, dtype=torch.float32) / sample_rate

@@ -17,7 +17,12 @@ import torch
 from torch import nn
 
 
-def _as_float_tensor(value: torch.Tensor | float, *, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+def _as_float_tensor(
+    value: torch.Tensor | float,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
     if isinstance(value, torch.Tensor):
         return value.to(device=device, dtype=dtype)
     return torch.tensor(value, device=device, dtype=dtype)
@@ -83,7 +88,12 @@ class FractionalDelay(nn.Module):
         sample_rate: float | None = None,
     ) -> torch.Tensor:
         rate = self.sample_rate if sample_rate is None else sample_rate
-        if isinstance(tau, torch.Tensor) and tau.ndim == 2 and x.ndim in (3, 4) and x.shape[1] == tau.shape[0]:
+        if (
+            isinstance(tau, torch.Tensor)
+            and tau.ndim == 2
+            and x.ndim in (3, 4)
+            and x.shape[1] == tau.shape[0]
+        ):
             return self.apply_channel_pair_delays(x, tau, sample_rate=rate)
         return delay_signal(x, tau, sample_rate=rate, dim=-1)
 

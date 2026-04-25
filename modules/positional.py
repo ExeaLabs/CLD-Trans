@@ -31,7 +31,9 @@ class FourierTimeEmbedding(nn.Module):
         device = t.device
         dtype = t.dtype if torch.is_floating_point(t) else torch.float32
         freqs = torch.exp(
-            -math.log(self.max_period) * torch.arange(half, device=device, dtype=dtype) / max(half - 1, 1)
+            -math.log(self.max_period)
+            * torch.arange(half, device=device, dtype=dtype)
+            / max(half - 1, 1)
         )
         args = t.to(dtype)[..., None] * freqs
         emb = torch.cat([torch.sin(args), torch.cos(args)], dim=-1)
@@ -40,7 +42,11 @@ class FourierTimeEmbedding(nn.Module):
         return emb
 
 
-def add_time_embedding(x: torch.Tensor, t: torch.Tensor, embedding: FourierTimeEmbedding) -> torch.Tensor:
+def add_time_embedding(
+    x: torch.Tensor,
+    t: torch.Tensor,
+    embedding: FourierTimeEmbedding,
+) -> torch.Tensor:
     """Add a time embedding to a `[B, C, T, D]` latent sequence."""
 
     if x.ndim != 4:

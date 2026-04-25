@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+
 import torch
 
 
@@ -25,7 +26,12 @@ def macro_f1(logits: torch.Tensor, target: torch.Tensor, num_classes: int | None
     return float(sum(scores) / len(scores))
 
 
-def bootstrap_ci(values: list[float], resamples: int = 1000, alpha: float = 0.05, seed: int = 42) -> tuple[float, float, float]:
+def bootstrap_ci(
+    values: list[float],
+    resamples: int = 1000,
+    alpha: float = 0.05,
+    seed: int = 42,
+) -> tuple[float, float, float]:
     if not values:
         return math.nan, math.nan, math.nan
     tensor = torch.tensor(values, dtype=torch.float32)

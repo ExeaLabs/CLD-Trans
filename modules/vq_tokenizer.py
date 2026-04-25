@@ -19,11 +19,25 @@ def _group_count(channels: int, max_groups: int = 8) -> int:
 class DepthwiseSeparableBlock(nn.Module):
     """Depthwise-separable 1-D convolution block."""
 
-    def __init__(self, in_channels: int, out_channels: int, *, stride: int = 1, kernel_size: int = 7) -> None:
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        *,
+        stride: int = 1,
+        kernel_size: int = 7,
+    ) -> None:
         super().__init__()
         padding = kernel_size // 2
         self.net = nn.Sequential(
-            nn.Conv1d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels),
+            nn.Conv1d(
+                in_channels,
+                in_channels,
+                kernel_size,
+                stride=stride,
+                padding=padding,
+                groups=in_channels,
+            ),
             nn.Conv1d(in_channels, out_channels, kernel_size=1),
             nn.GroupNorm(_group_count(out_channels), out_channels),
             nn.GELU(),
@@ -36,7 +50,12 @@ class DepthwiseSeparableBlock(nn.Module):
 class MotifEncoder(nn.Module):
     """CNN encoder that maps raw waveform windows to latent motif vectors."""
 
-    def __init__(self, input_channels: int = 1, hidden_dim: int = 128, embed_dim: int = 128) -> None:
+    def __init__(
+        self,
+        input_channels: int = 1,
+        hidden_dim: int = 128,
+        embed_dim: int = 128,
+    ) -> None:
         super().__init__()
         widths = [hidden_dim // 2, hidden_dim, hidden_dim, embed_dim]
         channels = [input_channels, *widths]
@@ -55,7 +74,12 @@ class MotifEncoder(nn.Module):
 class MotifDecoder(nn.Module):
     """Mirror decoder for waveform reconstruction."""
 
-    def __init__(self, output_channels: int = 1, hidden_dim: int = 128, embed_dim: int = 128) -> None:
+    def __init__(
+        self,
+        output_channels: int = 1,
+        hidden_dim: int = 128,
+        embed_dim: int = 128,
+    ) -> None:
         super().__init__()
         self.net = nn.Sequential(
             nn.ConvTranspose1d(embed_dim, hidden_dim, kernel_size=4, stride=2, padding=1),
@@ -67,7 +91,13 @@ class MotifDecoder(nn.Module):
             nn.ConvTranspose1d(hidden_dim, hidden_dim // 2, kernel_size=4, stride=2, padding=1),
             nn.GroupNorm(_group_count(hidden_dim // 2), hidden_dim // 2),
             nn.GELU(),
-            nn.ConvTranspose1d(hidden_dim // 2, output_channels, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose1d(
+                hidden_dim // 2,
+                output_channels,
+                kernel_size=4,
+                stride=2,
+                padding=1,
+            ),
         )
 
     def forward(self, z: torch.Tensor, *, target_length: int | None = None) -> torch.Tensor:
@@ -157,7 +187,11 @@ class VectorQuantizer(nn.Module):
         self.ema_embed.mul_(self.decay).add_(embed_sum, alpha=1 - self.decay)
 
         n = self.ema_cluster_size.sum().clamp_min(self.eps)
-        normalized_size = (self.ema_cluster_size + self.eps) / (n + self.codebook_size * self.eps) * n
+        normalized_size = (
+            (self.ema_cluster_size + self.eps)
+            / (n + self.codebook_size * self.eps)
+            * n
+        )
         self.codebook.copy_(self.ema_embed / normalized_size.unsqueeze(1).clamp_min(1.0))
         self.steps.add_(1)
         if self.revive_every > 0 and int(self.steps.item()) % self.revive_every == 0:
@@ -188,19 +222,32 @@ class PhysiologicalMotifVAE(nn.Module):
         commitment_cost: float = 0.25,
     ) -> None:
         super().__init__()
-        self.encoder = MotifEncoder(input_channels=input_channels, hidden_dim=hidden_dim, embed_dim=embed_dim)
+        self.encoder = MotifEncoder(
+            input_channels=input_channels,
+            hidden_dim=hidden_dim,
+            embed_dim=embed_dim,
+        )
         self.quantizer = VectorQuantizer(
             codebook_size=codebook_size,
             embed_dim=embed_dim,
             commitment_cost=commitment_cost,
         )
-        self.decoder = MotifDecoder(output_channels=input_channels, hidden_dim=hidden_dim, embed_dim=embed_dim)
+        self.decoder = MotifDecoder(
+            output_channels=input_channels,
+            hidden_dim=hidden_dim,
+            embed_dim=embed_dim,
+        )
 
     def encode_indices(self, x: torch.Tensor) -> torch.Tensor:
         z = self.encoder(x)
         return self.quantizer(z).indices
 
-    def decode_indices(self, indices: torch.Tensor, *, target_length: int | None = None) -> torch.Tensor:
+    def decode_indices(
+        self,
+        indices: torch.Tensor,
+        *,
+        target_length: int | None = None,
+    ) -> torch.Tensor:
         z = self.quantizer.codebook[indices]
         return self.decoder(z, target_length=target_length)
 

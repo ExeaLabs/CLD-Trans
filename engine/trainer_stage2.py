@@ -8,7 +8,6 @@ from torch.utils.data import DataLoader
 from losses.task_loss import classification_loss
 
 
-
 def train_stage2_epoch(
     model: torch.nn.Module,
     loader: DataLoader,

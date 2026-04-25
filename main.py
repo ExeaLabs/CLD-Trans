@@ -71,7 +71,11 @@ def run_stage1(cfg: DictConfig) -> dict[str, float]:
     )
     loader = DataLoader(dataset, batch_size=int(cfg.train.batch_size), shuffle=True)
     model = build_model(cfg).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=float(cfg.train.lr), weight_decay=float(cfg.train.weight_decay))
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=float(cfg.train.lr),
+        weight_decay=float(cfg.train.weight_decay),
+    )
     metrics = train_stage1_epoch(
         model,
         loader,
@@ -94,7 +98,11 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
     )
     loader = DataLoader(dataset, batch_size=int(cfg.train.batch_size), shuffle=True)
     model = build_model(cfg).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=float(cfg.train.lr), weight_decay=float(cfg.train.weight_decay))
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=float(cfg.train.lr),
+        weight_decay=float(cfg.train.weight_decay),
+    )
     metrics = train_stage2_epoch(
         model,
         loader,

@@ -1,5 +1,3 @@
-import torch
-
 from analysis.identifiability import edge_support_f1, tau_mae
 from data.synthetic_ldsem import generate_ldsem_batch
 
