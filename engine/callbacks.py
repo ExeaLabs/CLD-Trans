@@ -18,12 +18,34 @@ class EMA:
             for name, p in model.named_parameters()
             if p.requires_grad
         }
+        self.backup: dict[str, torch.Tensor] = {}
 
     @torch.no_grad()
     def update(self, model: torch.nn.Module) -> None:
         for name, param in model.named_parameters():
             if name in self.shadow:
                 self.shadow[name].mul_(self.decay).add_(param.detach(), alpha=1 - self.decay)
+
+    @torch.no_grad()
+    def store(self, model: torch.nn.Module) -> None:
+        self.backup = {
+            name: param.detach().clone()
+            for name, param in model.named_parameters()
+            if name in self.shadow
+        }
+
+    @torch.no_grad()
+    def copy_to(self, model: torch.nn.Module) -> None:
+        for name, param in model.named_parameters():
+            if name in self.shadow:
+                param.copy_(self.shadow[name])
+
+    @torch.no_grad()
+    def restore(self, model: torch.nn.Module) -> None:
+        for name, param in model.named_parameters():
+            if name in self.backup:
+                param.copy_(self.backup[name])
+        self.backup = {}
 
 
 def save_checkpoint(

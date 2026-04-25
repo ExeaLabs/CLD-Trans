@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Callable
+
 import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
@@ -25,6 +27,8 @@ def train_stage2_epoch(
     grad_clip_norm: float | None = 1.0,
     log_interval: int = 20,
     show_progress: bool = True,
+    lr_scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
+    ema_step_callback: Callable[[], None] | None = None,
 ) -> dict[str, float]:
     model.train()
     totals = torch.zeros(2, device=device, dtype=torch.float32)
@@ -43,6 +47,10 @@ def train_stage2_epoch(
         if grad_clip_norm is not None and grad_clip_norm > 0.0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
         optimizer.step()
+        if lr_scheduler is not None:
+            lr_scheduler.step()
+        if ema_step_callback is not None:
+            ema_step_callback()
         totals[0] += loss.detach()
         if task_type == "single_label":
             totals[1] += (out["logits"].argmax(dim=-1) == y).float().mean().detach()

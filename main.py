@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import contextlib
+import math
 import os
 from pathlib import Path
 from typing import Any
 
 import torch
 from omegaconf import DictConfig, OmegaConf
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, Dataset, Subset, random_split
 
 with contextlib.suppress(Exception):
     import torch.distributed as dist
@@ -24,7 +25,7 @@ except Exception:  # pragma: no cover - hydra is installed in normal runs
 from analysis.identifiability import edge_support_f1, tau_mae
 from data import build_dataset_from_config
 from data.synthetic_ldsem import generate_ldsem_batch
-from engine.callbacks import EarlyStopping, save_checkpoint
+from engine.callbacks import EMA, EarlyStopping, save_checkpoint
 from engine.trainer_stage1 import evaluate_stage1_epoch, train_stage1_epoch
 from engine.trainer_stage2 import evaluate_stage2_epoch, train_stage2_epoch
 from models.cld_transformer import CLDTransformer, CLDTransformerConfig
@@ -149,6 +150,132 @@ def _grad_clip_norm(cfg: DictConfig) -> float | None:
         return None
     clip = float(clip_value)
     return clip if clip > 0.0 else None
+
+
+def _load_pretrained_weights(model: CLDTransformer, cfg: DictConfig, *, is_main: bool) -> None:
+    checkpoint_path = cfg.train.get("pretrained_checkpoint")
+    if checkpoint_path is None:
+        return
+    path = Path(str(checkpoint_path))
+    if not path.exists():
+        raise FileNotFoundError(f"pretrained checkpoint not found: {path}")
+
+    payload = torch.load(path, map_location="cpu")
+    state_dict = payload["model"] if isinstance(payload, dict) and "model" in payload else payload
+    if not isinstance(state_dict, dict):
+        raise ValueError(f"checkpoint at {path} does not contain a valid state dict")
+
+    model_state = model.state_dict()
+    compatible = {
+        key: value
+        for key, value in state_dict.items()
+        if key in model_state and model_state[key].shape == value.shape
+    }
+    missing_keys, unexpected_keys = model.load_state_dict(compatible, strict=False)
+    if is_main:
+        loaded = len(compatible)
+        skipped = len(state_dict) - loaded
+        print(f"Loaded pretrained weights from {path} ({loaded} tensors, skipped {skipped})")
+        if missing_keys:
+            print(f"Missing keys after load: {len(missing_keys)}")
+        if unexpected_keys:
+            print(f"Unexpected keys after load: {len(unexpected_keys)}")
+
+
+def _configure_stage2_trainable_params(model: CLDTransformer, mode: str) -> None:
+    if mode != "linear_probe":
+        return
+    for param in model.parameters():
+        param.requires_grad = False
+    for param in model.head.parameters():
+        param.requires_grad = True
+
+
+def _subset_training_dataset(dataset: Dataset[Any], cfg: DictConfig) -> Dataset[Any]:
+    label_fraction = float(cfg.train.get("label_fraction", 1.0))
+    if label_fraction <= 0.0 or label_fraction > 1.0:
+        raise ValueError("train.label_fraction must be in (0, 1]")
+    if label_fraction >= 1.0:
+        return dataset
+    total = len(dataset)
+    keep = max(1, int(round(total * label_fraction)))
+    generator = torch.Generator().manual_seed(int(cfg.seed))
+    order = torch.randperm(total, generator=generator).tolist()
+    return Subset(dataset, order[:keep])
+
+
+def _build_stage2_scheduler(
+    optimizer: torch.optim.Optimizer,
+    cfg: DictConfig,
+    *,
+    steps_per_epoch: int,
+) -> torch.optim.lr_scheduler.LRScheduler | None:
+    warmup_steps = int(cfg.train.get("warmup_steps", 0))
+    if warmup_steps <= 0:
+        return None
+    epochs = int(cfg.train.epochs)
+    max_steps = cfg.train.get("max_steps")
+    effective_steps = steps_per_epoch if max_steps is None else min(int(max_steps), steps_per_epoch)
+    total_steps = max(1, effective_steps * epochs)
+
+    def lr_lambda(step: int) -> float:
+        current = step + 1
+        if current <= warmup_steps:
+            return float(current) / float(max(1, warmup_steps))
+        if total_steps <= warmup_steps:
+            return 1.0
+        progress = float(current - warmup_steps) / float(total_steps - warmup_steps)
+        progress = min(max(progress, 0.0), 1.0)
+        return 0.5 * (1.0 + math.cos(math.pi * progress))
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+
+
+def run_stage2_zero_shot(cfg: DictConfig) -> dict[str, float]:
+    if _is_distributed():
+        raise RuntimeError("zero-shot mode currently supports single-process runs only")
+    device = _resolve_device(cfg)
+    dataset = build_dataset_from_config(cfg)
+    loader = build_loader(dataset, cfg, device, shuffle=False, distributed=False)
+    model = build_model(cfg).to(device)
+    _load_pretrained_weights(model, cfg, is_main=True)
+    model.eval()
+
+    predicted_hist = torch.zeros(int(cfg.model.num_channels), dtype=torch.float64)
+    windows = 0
+    focal_matches = 0.0
+    focal_total = 0
+
+    use_autocast = device.type in {"cuda", "xpu"} and str(cfg.train.get("precision", "fp32")) in {"bf16", "fp16"}
+    autocast_dtype = torch.bfloat16 if str(cfg.train.get("precision", "fp32")) == "bf16" else torch.float16
+
+    with torch.no_grad():
+        for batch in loader:
+            x = batch["x"].to(device, non_blocking=True)
+            with torch.autocast(device_type=device.type, dtype=autocast_dtype, enabled=use_autocast):
+                out = model(x, mode="fine_tune")
+            tau = out["tau"]
+            if tau.ndim != 2:
+                raise ValueError("expected tau to have shape [C, C] for zero-shot evaluation")
+            focal_idx = int(torch.argmin(tau.sum(dim=-1)).item())
+            bsz = int(x.shape[0])
+            predicted_hist[focal_idx] += bsz
+            windows += bsz
+
+            if "focal_lead" in batch:
+                target = batch["focal_lead"].to(device)
+                focal_matches += float((target == focal_idx).float().sum().item())
+                focal_total += int(target.numel())
+
+    metrics: dict[str, float] = {
+        "windows": float(windows),
+    }
+    for index, count in enumerate(predicted_hist.tolist()):
+        metrics[f"predicted_focal_count_{index}"] = float(count)
+    if focal_total > 0:
+        metrics["focal_lead_accuracy"] = focal_matches / max(focal_total, 1)
+    print(OmegaConf.to_yaml(metrics))
+    return metrics
 
 
 def split_dataset(
@@ -329,22 +456,43 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
     is_main = not distributed or rank == 0
     dataset = build_dataset_from_config(cfg)
     train_dataset, val_dataset = split_dataset(dataset, cfg)
+    train_dataset = _subset_training_dataset(train_dataset, cfg)
     loader = build_loader(train_dataset, cfg, device, shuffle=True, distributed=distributed)
     val_loader = None if val_dataset is None else build_loader(val_dataset, cfg, device, shuffle=False, distributed=distributed)
     model = build_model(cfg).to(device)
+    train_mode = str(cfg.train.get("mode", "fine_tune"))
+    _load_pretrained_weights(model, cfg, is_main=is_main)
+    _configure_stage2_trainable_params(model, train_mode)
     if bool(cfg.train.get("compile", False)):
         model = torch.compile(model, mode=str(cfg.train.get("compile_mode", "default")))
     model = _maybe_wrap_ddp(model, device)
+    trainable_params = [param for param in model.parameters() if param.requires_grad]
+    if not trainable_params:
+        raise RuntimeError("no trainable parameters found for stage2")
     optimizer = torch.optim.AdamW(
-        model.parameters(),
+        trainable_params,
         lr=float(cfg.train.lr),
         weight_decay=float(cfg.train.weight_decay),
     )
+    lr_scheduler = _build_stage2_scheduler(optimizer, cfg, steps_per_epoch=len(loader))
+
+    ema_cfg = cfg.train.get("ema")
+    use_ema = bool(ema_cfg and bool(ema_cfg.get("enabled", False)) and train_mode == "fine_tune")
+    model_for_ops = _model_for_checkpoint(model)
+    ema = EMA(model_for_ops, decay=float(ema_cfg.get("decay", 0.999))) if use_ema else None
+
+    def _ema_step() -> None:
+        if ema is not None:
+            ema.update(model_for_ops)
+
     epochs = int(cfg.train.epochs)
     early_stopper = maybe_make_early_stopper(cfg, val_loader is not None)
     monitor_metric = str(cfg.train.get("monitor", "val_loss"))
     best_checkpoint_path = checkpoint_path_for(cfg)
     last_metrics: dict[str, float] = {}
+    task_type = str(cfg.train.get("task_type", "single_label"))
+    focal_gamma = cfg.train.get("focal_gamma")
+    focal_gamma_value = None if focal_gamma is None else float(focal_gamma)
     for epoch_index in range(epochs):
         if distributed and isinstance(loader.sampler, DistributedSampler):
             loader.sampler.set_epoch(epoch_index)
@@ -355,7 +503,9 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
             loader,
             optimizer,
             device,
-            mode=str(cfg.train.get("mode", "fine_tune")),
+            task_type=task_type,
+            focal_gamma=focal_gamma_value,
+            mode=train_mode,
             max_steps=None if cfg.train.max_steps is None else int(cfg.train.max_steps),
             epoch=epoch_index + 1,
             num_epochs=epochs,
@@ -363,15 +513,22 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
             grad_clip_norm=_grad_clip_norm(cfg),
             log_interval=int(cfg.train.get("log_interval", 20)),
             show_progress=is_main,
+            lr_scheduler=lr_scheduler,
+            ema_step_callback=_ema_step,
         )
         train_metrics = _maybe_allreduce_metrics(train_metrics, device)
         val_metrics = None
         if val_loader is not None:
+            if ema is not None:
+                ema.store(model_for_ops)
+                ema.copy_to(model_for_ops)
             val_metrics = evaluate_stage2_epoch(
                 model,
                 val_loader,
                 device,
-                mode=str(cfg.train.get("mode", "fine_tune")),
+                task_type=task_type,
+                focal_gamma=focal_gamma_value,
+                mode=train_mode,
                 max_steps=None if cfg.train.max_steps is None else int(cfg.train.max_steps),
                 epoch=epoch_index + 1,
                 num_epochs=epochs,
@@ -379,6 +536,8 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
                 log_interval=int(cfg.train.get("log_interval", 20)),
                 show_progress=is_main,
             )
+            if ema is not None:
+                ema.restore(model_for_ops)
             val_metrics = _maybe_allreduce_metrics(val_metrics, device)
         last_metrics = build_epoch_metrics(train_metrics, val_metrics)
         if is_main:
@@ -424,7 +583,10 @@ def _main(cfg: DictConfig) -> None:
         elif mode == "stage1":
             run_stage1(cfg)
         elif mode == "stage2":
-            run_stage2(cfg)
+            if bool(cfg.get("eval", {}).get("zero_shot", False)):
+                run_stage2_zero_shot(cfg)
+            else:
+                run_stage2(cfg)
         else:
             raise ValueError(f"unknown mode: {mode}")
     finally:

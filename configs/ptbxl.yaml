@@ -16,3 +16,9 @@ model:
 train:
   batch_size: 64
   lr: 1.0e-4
+  epochs: 60
+  warmup_steps: 1000
+  task_type: multi_label
+  ema:
+    enabled: true
+    decay: 0.999

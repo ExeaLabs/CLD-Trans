@@ -40,6 +40,14 @@ train:
   log_interval: 20
   compile: false
   compile_mode: default
+  pretrained_checkpoint: null
+  label_fraction: 1.0
+  warmup_steps: 0
+  task_type: single_label
+  focal_gamma: null
+  ema:
+    enabled: false
+    decay: 0.999
   matmul_precision: high
   cudnn_benchmark: true
   max_steps: 5
