@@ -8,6 +8,7 @@ data:
   dataset: ptbxl
   path: /scratch/cld-trans/datasets/ptb-xl
   sample_rate: 500.0
+  num_steps: 5000
   window_seconds: 10.0
 model:
   num_channels: 12
@@ -18,6 +19,7 @@ train:
   precision: bf16
   batch_size: 64
   lr: 1.0e-4
+  max_steps: null
   epochs: 60
   warmup_steps: 1000
   task_type: multi_label
