@@ -92,10 +92,11 @@ else
   python -m pip install --no-user pytest ruff mypy
 fi
 
-python - <<'PY'
+CLD_TRANS_RESOLVED_BACKEND="${resolved_backend}" python - <<'PY'
+import os
 import torch
 print(f"PyTorch: {torch.__version__}")
-print(f"Configured backend: ${resolved_backend}")
+print(f"Configured backend: {os.environ['CLD_TRANS_RESOLVED_BACKEND']}")
 print(f"CUDA/HIP available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
     print(f"Device count: {torch.cuda.device_count()}")
