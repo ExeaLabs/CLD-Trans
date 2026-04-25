@@ -96,9 +96,19 @@ def _maybe_allreduce_metrics(metrics: dict[str, float], device: torch.device) ->
 
 def _setup_runtime(cfg: DictConfig) -> None:
     matmul_precision = str(cfg.train.get("matmul_precision", "high"))
-    if matmul_precision in {"high", "medium", "highest"}:
-        torch.set_float32_matmul_precision(matmul_precision)
     if torch.cuda.is_available():
+        # Prefer the newer backend precision API when present (PyTorch >=2.9).
+        if (
+            hasattr(torch.backends, "cuda")
+            and hasattr(torch.backends.cuda, "matmul")
+            and hasattr(torch.backends.cuda.matmul, "fp32_precision")
+        ):
+            fp32_precision = "ieee" if matmul_precision == "highest" else "tf32"
+            torch.backends.cuda.matmul.fp32_precision = fp32_precision
+            if hasattr(torch.backends, "cudnn") and hasattr(torch.backends.cudnn, "conv"):
+                torch.backends.cudnn.conv.fp32_precision = fp32_precision
+        elif matmul_precision in {"high", "medium", "highest"}:
+            torch.set_float32_matmul_precision(matmul_precision)
         torch.backends.cudnn.benchmark = bool(cfg.train.get("cudnn_benchmark", True))
 
 
