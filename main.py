@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import inspect
 import math
 import os
 from pathlib import Path
@@ -229,6 +230,38 @@ def _build_stage2_scheduler(
         return 0.5 * (1.0 + math.cos(math.pi * progress))
 
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+
+
+def _build_stage2_optimizer(
+    trainable_params: list[torch.nn.Parameter],
+    cfg: DictConfig,
+    device: torch.device,
+) -> torch.optim.Optimizer:
+    lr = float(cfg.train.lr)
+    weight_decay = float(cfg.train.weight_decay)
+    adamw_signature = inspect.signature(torch.optim.AdamW.__init__)
+    is_rocm = getattr(torch.version, "hip", None) is not None
+
+    # ROCm uses torch.cuda APIs, but fused AdamW is typically CUDA-specific.
+    # Prefer fused only on non-ROCm CUDA builds, then fall back to foreach.
+    if device.type == "cuda" and not is_rocm and "fused" in adamw_signature.parameters:
+        try:
+            return torch.optim.AdamW(
+                trainable_params,
+                lr=lr,
+                weight_decay=weight_decay,
+                fused=True,
+            )
+        except (RuntimeError, ValueError):
+            pass
+
+    optimizer_kwargs: dict[str, Any] = {
+        "lr": lr,
+        "weight_decay": weight_decay,
+    }
+    if device.type in {"cuda", "xpu"} and "foreach" in adamw_signature.parameters:
+        optimizer_kwargs["foreach"] = True
+    return torch.optim.AdamW(trainable_params, **optimizer_kwargs)
 
 
 def run_stage2_zero_shot(cfg: DictConfig) -> dict[str, float]:
@@ -469,11 +502,7 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
     trainable_params = [param for param in model.parameters() if param.requires_grad]
     if not trainable_params:
         raise RuntimeError("no trainable parameters found for stage2")
-    optimizer = torch.optim.AdamW(
-        trainable_params,
-        lr=float(cfg.train.lr),
-        weight_decay=float(cfg.train.weight_decay),
-    )
+    optimizer = _build_stage2_optimizer(trainable_params, cfg, device)
     lr_scheduler = _build_stage2_scheduler(optimizer, cfg, steps_per_epoch=len(loader))
 
     ema_cfg = cfg.train.get("ema")
@@ -511,6 +540,7 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
             num_epochs=epochs,
             precision=str(cfg.train.get("precision", "fp32")),
             grad_clip_norm=_grad_clip_norm(cfg),
+            clip_parameters=trainable_params,
             log_interval=int(cfg.train.get("log_interval", 20)),
             show_progress=is_main,
             lr_scheduler=lr_scheduler,

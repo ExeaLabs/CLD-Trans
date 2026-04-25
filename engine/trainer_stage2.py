@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Callable
 
 import torch
@@ -25,6 +26,7 @@ def train_stage2_epoch(
     num_epochs: int = 1,
     precision: str = "fp32",
     grad_clip_norm: float | None = 1.0,
+    clip_parameters: Iterable[torch.nn.Parameter] | None = None,
     log_interval: int = 20,
     show_progress: bool = True,
     lr_scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
@@ -36,6 +38,7 @@ def train_stage2_epoch(
     progress = tqdm(loader, desc=f"Stage2 Epoch {epoch}/{num_epochs}", leave=True) if show_progress else loader
     use_autocast = device.type in {"cuda", "xpu"} and precision in {"bf16", "fp16"}
     autocast_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
+    clip_target = tuple(clip_parameters) if clip_parameters is not None else tuple(model.parameters())
     for batch in progress:
         x = batch["x"].to(device, non_blocking=True)
         y = batch["y"].to(device, non_blocking=True)
@@ -44,8 +47,8 @@ def train_stage2_epoch(
             out = model(x, mode=mode)
             loss = classification_loss(out["logits"], y, task_type=task_type, focal_gamma=focal_gamma)
         loss.backward()
-        if grad_clip_norm is not None and grad_clip_norm > 0.0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+        if grad_clip_norm is not None and grad_clip_norm > 0.0 and clip_target:
+            torch.nn.utils.clip_grad_norm_(clip_target, grad_clip_norm)
         optimizer.step()
         if lr_scheduler is not None:
             lr_scheduler.step()
