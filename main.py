@@ -15,7 +15,8 @@ except Exception:  # pragma: no cover - hydra is installed in normal runs
     hydra = None
 
 from analysis.identifiability import edge_support_f1, tau_mae
-from data.synthetic_ldsem import SyntheticLDSEMDataset, generate_ldsem_batch
+from data import build_dataset_from_config
+from data.synthetic_ldsem import generate_ldsem_batch
 from engine.trainer_stage1 import train_stage1_epoch
 from engine.trainer_stage2 import train_stage2_epoch
 from models.cld_transformer import CLDTransformer, CLDTransformerConfig
@@ -62,13 +63,7 @@ def run_synthetic_smoke(cfg: DictConfig) -> dict[str, Any]:
 
 def run_stage1(cfg: DictConfig) -> dict[str, float]:
     device = torch.device(cfg.train.device)
-    dataset = SyntheticLDSEMDataset(
-        size=int(cfg.data.synthetic_size),
-        num_channels=int(cfg.model.num_channels),
-        num_steps=int(cfg.data.num_steps),
-        sample_rate=float(cfg.data.sample_rate),
-        seed=int(cfg.seed),
-    )
+    dataset = build_dataset_from_config(cfg)
     loader = DataLoader(dataset, batch_size=int(cfg.train.batch_size), shuffle=True)
     model = build_model(cfg).to(device)
     optimizer = torch.optim.AdamW(
@@ -89,13 +84,7 @@ def run_stage1(cfg: DictConfig) -> dict[str, float]:
 
 def run_stage2(cfg: DictConfig) -> dict[str, float]:
     device = torch.device(cfg.train.device)
-    dataset = SyntheticLDSEMDataset(
-        size=int(cfg.data.synthetic_size),
-        num_channels=int(cfg.model.num_channels),
-        num_steps=int(cfg.data.num_steps),
-        sample_rate=float(cfg.data.sample_rate),
-        seed=int(cfg.seed),
-    )
+    dataset = build_dataset_from_config(cfg)
     loader = DataLoader(dataset, batch_size=int(cfg.train.batch_size), shuffle=True)
     model = build_model(cfg).to(device)
     optimizer = torch.optim.AdamW(
@@ -108,6 +97,7 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
         loader,
         optimizer,
         device,
+        mode=str(cfg.train.get("mode", "fine_tune")),
         max_steps=None if cfg.train.max_steps is None else int(cfg.train.max_steps),
     )
     print(OmegaConf.to_yaml(metrics))
