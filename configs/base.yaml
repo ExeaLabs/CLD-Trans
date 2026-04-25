@@ -1,0 +1,44 @@
+seed: 42
+mode: synthetic_smoke
+
+paths:
+  scratch_root: /scratch/cld-trans
+  data_root: /scratch/cld-trans/datasets
+  cache_dir: /scratch/cld-trans/cache
+  checkpoint_dir: /scratch/cld-trans/checkpoints
+  results_dir: results
+  logs_dir: logs
+
+data:
+  synthetic: true
+  synthetic_size: 64
+  num_steps: 256
+  sample_rate: 128.0
+  window_seconds: 2.0
+
+model:
+  num_channels: 4
+  num_classes: 4
+  codebook_size: 64
+  motif_dim: 32
+  hidden_dim: 32
+  tau_max: 0.25
+  top_k: null
+  ode_solver: rk4
+
+train:
+  device: cpu
+  batch_size: 8
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  max_steps: 5
+  epochs: 1
+  precision: fp32
+  seeds: [42, 123, 7, 0, 256]
+
+loss:
+  spectral_weight: 0.1
+  lambda_ldsem: 1.0
+  lambda_sparse: 1.0e-3
+  lambda_tau_smooth: 1.0e-3
+  lambda_ode_energy: 1.0e-4

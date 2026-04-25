@@ -1,0 +1,18 @@
+defaults:
+  - base
+  - _self_
+
+mode: stage2
+data:
+  synthetic: false
+  dataset: chbmit
+  path: /scratch/cld-trans/datasets/chb-mit
+  sample_rate: 256.0
+  window_seconds: 30.0
+model:
+  num_channels: 23
+  num_classes: 2
+  tau_max: 1.0
+train:
+  batch_size: 16
+  lr: 1.0e-4

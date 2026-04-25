@@ -1,0 +1,26 @@
+defaults:
+  - base
+  - _self_
+
+mode: stage1
+data:
+  synthetic: false
+  pretrain_corpora: [tuh-eeg, mimic-iv-ecg]
+  sample_rate: 256.0
+  num_steps: 7680
+model:
+  num_channels: 23
+  num_classes: 2
+  codebook_size: 512
+  motif_dim: 128
+  hidden_dim: 128
+  tau_max: 2.0
+  top_k: 4
+  ode_solver: dopri5
+train:
+  device: cuda
+  batch_size: 32
+  lr: 3.0e-4
+  epochs: 100
+  max_steps: null
+  precision: bf16
