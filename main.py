@@ -64,7 +64,15 @@ def run_synthetic_smoke(cfg: DictConfig) -> dict[str, Any]:
 def run_stage1(cfg: DictConfig) -> dict[str, float]:
     device = torch.device(cfg.train.device)
     dataset = build_dataset_from_config(cfg)
-    loader = DataLoader(dataset, batch_size=int(cfg.train.batch_size), shuffle=True)
+    num_workers = int(cfg.train.get("num_workers", 0))
+    loader = DataLoader(
+        dataset,
+        batch_size=int(cfg.train.batch_size),
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=device.type == "cuda",
+        persistent_workers=num_workers > 0,
+    )
     model = build_model(cfg).to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -82,6 +90,7 @@ def run_stage1(cfg: DictConfig) -> dict[str, float]:
             max_steps=None if cfg.train.max_steps is None else int(cfg.train.max_steps),
             epoch=epoch_index + 1,
             num_epochs=epochs,
+            precision=str(cfg.train.get("precision", "fp32")),
         )
         print(OmegaConf.to_yaml({"epoch": epoch_index + 1, **last_metrics}))
     return last_metrics
@@ -90,7 +99,15 @@ def run_stage1(cfg: DictConfig) -> dict[str, float]:
 def run_stage2(cfg: DictConfig) -> dict[str, float]:
     device = torch.device(cfg.train.device)
     dataset = build_dataset_from_config(cfg)
-    loader = DataLoader(dataset, batch_size=int(cfg.train.batch_size), shuffle=True)
+    num_workers = int(cfg.train.get("num_workers", 0))
+    loader = DataLoader(
+        dataset,
+        batch_size=int(cfg.train.batch_size),
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=device.type == "cuda",
+        persistent_workers=num_workers > 0,
+    )
     model = build_model(cfg).to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -109,6 +126,7 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
             max_steps=None if cfg.train.max_steps is None else int(cfg.train.max_steps),
             epoch=epoch_index + 1,
             num_epochs=epochs,
+            precision=str(cfg.train.get("precision", "fp32")),
         )
         print(OmegaConf.to_yaml({"epoch": epoch_index + 1, **last_metrics}))
     return last_metrics

@@ -20,6 +20,7 @@ model:
 train:
   device: cuda
   batch_size: 2
+  num_workers: 4
   lr: 3.0e-4
   epochs: 100
   max_steps: null

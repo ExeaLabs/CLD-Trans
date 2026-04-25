@@ -21,18 +21,22 @@ def train_stage2_epoch(
     max_steps: int | None = None,
     epoch: int = 1,
     num_epochs: int = 1,
+    precision: str = "fp32",
 ) -> dict[str, float]:
     model.train()
     total_loss = 0.0
     total_acc = 0.0
     steps = 0
     progress = tqdm(loader, desc=f"Stage2 Epoch {epoch}/{num_epochs}", leave=True)
+    use_autocast = device.type in {"cuda", "xpu"} and precision in {"bf16", "fp16"}
+    autocast_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
     for batch in progress:
-        x = batch["x"].to(device)
-        y = batch["y"].to(device)
+        x = batch["x"].to(device, non_blocking=True)
+        y = batch["y"].to(device, non_blocking=True)
         optimizer.zero_grad(set_to_none=True)
-        out = model(x, mode=mode)
-        loss = classification_loss(out["logits"], y, task_type=task_type, focal_gamma=focal_gamma)
+        with torch.autocast(device_type=device.type, dtype=autocast_dtype, enabled=use_autocast):
+            out = model(x, mode=mode)
+            loss = classification_loss(out["logits"], y, task_type=task_type, focal_gamma=focal_gamma)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
