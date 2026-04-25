@@ -25,6 +25,17 @@ If the server already has a working ROCm PyTorch installation, use:
 CLD_TRANS_SKIP_TORCH_INSTALL=1 bash scripts/server_master_run.sh --download public --smoke-only
 ```
 
+If you are already inside a virtualenv that contains the ROCm PyTorch build,
+bootstrap the repo into that environment instead of trying a user install:
+
+```bash
+python -m pip install --no-user hydra-core numpy omegaconf torchdiffeq tqdm pytest
+python -m pip install --no-user -e . --no-deps
+python -m pytest -q
+python main.py mode=synthetic_smoke
+python main.py mode=stage1 train.max_steps=1
+```
+
 ## 3. Public pretraining datasets
 
 MIMIC-IV-ECG v1.0 is open access on PhysioNet. TUH-EEG has been replaced in the

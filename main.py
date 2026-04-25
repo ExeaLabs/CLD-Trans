@@ -136,5 +136,9 @@ if hydra is not None:
 
 if __name__ == "__main__":
     if hydra is None:
-        raise RuntimeError("hydra-core is required; install with `pip install -e .`")
+        raise RuntimeError(
+            "hydra-core is required; install project deps with "
+            "`python -m pip install --no-user -e . --no-deps` in a ROCm-preprovisioned env "
+            "or `python -m pip install --no-user -e .[dev]` in a fresh env"
+        )
     hydra_main()

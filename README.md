@@ -14,7 +14,7 @@ not committed; by default scripts expect them under `/scratch/cld-trans/`.
 python -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install -e ".[dev]"
+pip install --no-user -e ".[dev]"
 pytest
 ```
 
@@ -24,6 +24,14 @@ server when `CLD_TRANS_SKIP_TORCH_INSTALL=1` is set.
 
 ```bash
 CLD_TRANS_SKIP_TORCH_INSTALL=1 bash scripts/setup_env.sh
+```
+
+If the server image already dropped ROCm PyTorch into your active virtualenv,
+install only the project dependencies and skip dependency resolution for torch:
+
+```bash
+python -m pip install --no-user hydra-core numpy omegaconf torchdiffeq tqdm pytest
+python -m pip install --no-user -e . --no-deps
 ```
 
 ## Core commands
