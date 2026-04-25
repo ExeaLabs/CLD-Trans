@@ -7,6 +7,7 @@ python -m pip install --upgrade pip
 
 if [[ "${CLD_TRANS_SKIP_TORCH_INSTALL:-0}" == "1" ]]; then
   python -m pip install hydra-core numpy omegaconf torchdiffeq tqdm pytest ruff mypy
+  python -m pip install -e . --no-deps
 else
   python -m pip install -e ".[dev]"
 fi

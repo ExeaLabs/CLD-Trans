@@ -42,6 +42,21 @@ bash scripts/train_stage1.sh
 bash scripts/train_stage2.sh chbmit fine_tune
 ```
 
+## Server handoff
+
+For someone running the repo on the MI300X server without project context:
+
+```bash
+bash scripts/server_master_run.sh --download public --smoke-only
+```
+
+Dataset downloads are handled by [scripts/download_datasets_aws.sh](scripts/download_datasets_aws.sh).
+Public PhysioNet datasets are downloaded with AWS `--no-sign-request` by default.
+Credentialed datasets such as MIMIC-IV-ECG and licensed TUH-EEG require AWS
+access or bucket overrides before running with `--download all`.
+
+See [SERVER_RUNBOOK.md](SERVER_RUNBOOK.md) for the full handoff instructions.
+
 ## Repository layout
 
 - `data/` — synthetic LD-SEM generator, transforms, and thin dataset wrappers.
