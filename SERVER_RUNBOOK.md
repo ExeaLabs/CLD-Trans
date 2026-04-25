@@ -66,6 +66,19 @@ Useful overrides:
 GPUS=8 CONFIG=stage1_server bash scripts/train_stage1.sh
 ```
 
+For a single MI300X, start with the reduced-memory config instead of the full
+8-GPU server preset:
+
+```bash
+GPUS=1 CONFIG=stage1_single_gpu bash scripts/train_stage1.sh
+```
+
+You can also pass Hydra overrides through the launcher now, for example:
+
+```bash
+GPUS=1 CONFIG=stage1_single_gpu bash scripts/train_stage1.sh train.max_steps=10
+```
+
 ## 5. Dataset download script only
 
 ```bash
