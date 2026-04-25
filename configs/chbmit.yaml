@@ -17,7 +17,7 @@ model:
 train:
   device: cuda
   precision: bf16
-  batch_size: 16
+  batch_size: 64
   num_workers: 12
   prefetch_factor: 4
   persistent_workers: true
