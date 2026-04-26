@@ -600,6 +600,8 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
     task_type = str(cfg.train.get("task_type", "single_label"))
     focal_gamma = cfg.train.get("focal_gamma")
     focal_gamma_value = None if focal_gamma is None else float(focal_gamma)
+    class_weights_cfg = cfg.train.get("class_weights")
+    class_weights_value = None if class_weights_cfg is None else [float(value) for value in class_weights_cfg]
     max_steps = None if cfg.train.get("max_steps") is None else int(cfg.train.max_steps)
     max_train_steps = cfg.train.get("max_train_steps")
     max_val_steps = cfg.train.get("max_val_steps")
@@ -617,6 +619,7 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
             device,
             task_type=task_type,
             focal_gamma=focal_gamma_value,
+            class_weights=class_weights_value,
             mode=train_mode,
             max_steps=max_train_steps_value,
             epoch=epoch_index + 1,
@@ -641,6 +644,7 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
                 device,
                 task_type=task_type,
                 focal_gamma=focal_gamma_value,
+                class_weights=class_weights_value,
                 mode=train_mode,
                 max_steps=max_val_steps_value,
                 epoch=epoch_index + 1,

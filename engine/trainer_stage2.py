@@ -21,6 +21,7 @@ def train_stage2_epoch(
     *,
     task_type: str = "single_label",
     focal_gamma: float | None = None,
+    class_weights: list[float] | tuple[float, ...] | torch.Tensor | None = None,
     mode: str = "fine_tune",
     max_steps: int | None = None,
     epoch: int = 1,
@@ -46,7 +47,13 @@ def train_stage2_epoch(
         optimizer.zero_grad(set_to_none=True)
         with torch.autocast(device_type=device.type, dtype=autocast_dtype, enabled=use_autocast):
             out = model(x, mode=mode)
-            loss = classification_loss(out["logits"], y, task_type=task_type, focal_gamma=focal_gamma)
+            loss = classification_loss(
+                out["logits"],
+                y,
+                task_type=task_type,
+                focal_gamma=focal_gamma,
+                class_weights=class_weights,
+            )
         loss.backward()
         if grad_clip_norm is not None and grad_clip_norm > 0.0 and clip_target:
             torch.nn.utils.clip_grad_norm_(clip_target, grad_clip_norm)
@@ -81,6 +88,7 @@ def evaluate_stage2_epoch(
     *,
     task_type: str = "single_label",
     focal_gamma: float | None = None,
+    class_weights: list[float] | tuple[float, ...] | torch.Tensor | None = None,
     mode: str = "fine_tune",
     max_steps: int | None = None,
     epoch: int = 1,
@@ -103,7 +111,13 @@ def evaluate_stage2_epoch(
             y = batch["y"].to(device, non_blocking=True)
             with torch.autocast(device_type=device.type, dtype=autocast_dtype, enabled=use_autocast):
                 out = model(x, mode=mode)
-                loss = classification_loss(out["logits"], y, task_type=task_type, focal_gamma=focal_gamma)
+                loss = classification_loss(
+                    out["logits"],
+                    y,
+                    task_type=task_type,
+                    focal_gamma=focal_gamma,
+                    class_weights=class_weights,
+                )
             totals[0] += loss.detach()
             logits_chunks.append(out["logits"].detach().cpu())
             target_chunks.append(y.detach().cpu())

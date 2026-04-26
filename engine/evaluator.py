@@ -76,6 +76,42 @@ def _multilabel_macro_f1(prob: torch.Tensor, target: torch.Tensor, threshold: fl
     return float(sum(scores) / max(len(scores), 1))
 
 
+def _binary_threshold_metrics(scores: torch.Tensor, target: torch.Tensor) -> dict[str, float]:
+    target = target.to(dtype=torch.bool)
+    positives = int(target.sum().item())
+    negatives = int((~target).sum().item())
+    if positives == 0 or negatives == 0:
+        return {
+            "best_f1": math.nan,
+            "best_balanced_accuracy": math.nan,
+            "best_f1_threshold": math.nan,
+        }
+    thresholds = torch.linspace(0.01, 0.99, 99)
+    best_f1 = -1.0
+    best_balanced_accuracy = -1.0
+    best_threshold = 0.5
+    for threshold in thresholds:
+        pred = scores >= threshold
+        tp = float((pred & target).sum().item())
+        fp = float((pred & ~target).sum().item())
+        tn = float((~pred & ~target).sum().item())
+        fn = float((~pred & target).sum().item())
+        precision = tp / max(tp + fp, 1.0)
+        recall = tp / max(tp + fn, 1.0)
+        specificity = tn / max(tn + fp, 1.0)
+        f1 = 2.0 * precision * recall / max(precision + recall, 1.0e-12)
+        balanced_accuracy = 0.5 * (recall + specificity)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_balanced_accuracy = balanced_accuracy
+            best_threshold = float(threshold.item())
+    return {
+        "best_f1": float(best_f1),
+        "best_balanced_accuracy": float(best_balanced_accuracy),
+        "best_f1_threshold": float(best_threshold),
+    }
+
+
 def classification_metrics(
     logits: torch.Tensor,
     target: torch.Tensor,
@@ -121,6 +157,7 @@ def classification_metrics(
     if num_classes == 2:
         metrics["auroc"] = _binary_auroc(prob[:, 1], target == 1)
         metrics["auprc"] = _binary_average_precision(prob[:, 1], target == 1)
+        metrics.update(_binary_threshold_metrics(prob[:, 1], target == 1))
     else:
         metrics["auroc"] = _nanmean(
             [_binary_auroc(prob[:, cls], target == cls) for cls in range(num_classes)]
