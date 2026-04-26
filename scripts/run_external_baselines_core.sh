@@ -8,13 +8,12 @@ DRY_RUN="${DRY_RUN:-0}"
 DATASETS="${DATASETS:-chbmit ptbxl sleepedf}"
 SEEDS="${SEEDS:-42 123 7}"
 LABEL_FRACTIONS="${LABEL_FRACTIONS:-1.0 0.1 0.01}"
-METHODS="${METHODS:-BIOT BENDR DYNOTEARS}"
-
-# Command hooks must be provided by the user/environment for reproducible external runs.
-# Placeholders available: {dataset} {seed} {label_fraction} {repo_root}
-BIOT_CMD_TEMPLATE="${BIOT_CMD_TEMPLATE:-}"
-BENDR_CMD_TEMPLATE="${BENDR_CMD_TEMPLATE:-}"
-DYNOTEARS_CMD_TEMPLATE="${DYNOTEARS_CMD_TEMPLATE:-}"
+METHODS="${METHODS:-BIOT BENDR EEG_GCNN DYNOTEARS Rhino}"
+EXTERNAL_EPOCHS="${EXTERNAL_EPOCHS:-8}"
+EXTERNAL_MAX_TRAIN_STEPS="${EXTERNAL_MAX_TRAIN_STEPS:-80}"
+EXTERNAL_MAX_VAL_STEPS="${EXTERNAL_MAX_VAL_STEPS:-null}"
+EXTERNAL_NUM_WORKERS="${EXTERNAL_NUM_WORKERS:-8}"
+EXTERNAL_PATIENCE="${EXTERNAL_PATIENCE:-2}"
 
 STATUS_FILE="${STATUS_FILE:-${REPO_ROOT}/results/external_baseline_run_status.csv}"
 mkdir -p "$(dirname -- "${STATUS_FILE}")"
@@ -43,20 +42,35 @@ fill_template() {
   echo "${out}"
 }
 
-template_for() {
+batch_size_for() {
+  local dataset="$1"
+  case "${dataset}" in
+    chbmit)
+      echo "320"
+      ;;
+    ptbxl)
+      echo "640"
+      ;;
+    *)
+      echo "256"
+      ;;
+  esac
+}
+
+hidden_dim_for() {
   local method="$1"
   case "${method}" in
     BIOT)
-      echo "${BIOT_CMD_TEMPLATE}"
+      echo "128"
       ;;
     BENDR)
-      echo "${BENDR_CMD_TEMPLATE}"
+      echo "96"
       ;;
-    DYNOTEARS)
-      echo "${DYNOTEARS_CMD_TEMPLATE}"
+    EEG_GCNN)
+      echo "64"
       ;;
     *)
-      echo ""
+      echo "64"
       ;;
   esac
 }
@@ -68,23 +82,12 @@ echo "[info] Seeds: ${SEEDS}"
 echo "[info] Label fractions: ${LABEL_FRACTIONS}"
 
 for method in ${METHODS}; do
-  template="$(template_for "${method}")"
-  if [[ -z "${template}" ]]; then
-    echo "[warn] ${method} command template not provided; skipping"
-    for dataset in ${DATASETS}; do
-      for seed in ${SEEDS}; do
-        for frac in ${LABEL_FRACTIONS}; do
-          echo "${method},${dataset},${seed},${frac},skipped,missing command template" >>"${STATUS_FILE}"
-        done
-      done
-    done
-    continue
-  fi
-
   for dataset in ${DATASETS}; do
     for seed in ${SEEDS}; do
       for frac in ${LABEL_FRACTIONS}; do
-        cmd="$(fill_template "${template}" "${dataset}" "${seed}" "${frac}")"
+        dataset_batch_size="$(batch_size_for "${dataset}")"
+        hidden_dim="$(hidden_dim_for "${method}")"
+        cmd="python '${REPO_ROOT}/scripts/run_external_baseline_native.py' --config-name '${dataset}' mode=stage2 seed='${seed}' train.label_fraction='${frac}' train.val_split=0.1 train.test_split=0.1 train.task_type=single_label train.batch_size='${dataset_batch_size}' train.num_workers='${EXTERNAL_NUM_WORKERS}' train.max_train_steps='${EXTERNAL_MAX_TRAIN_STEPS}' train.max_val_steps='${EXTERNAL_MAX_VAL_STEPS}' +baseline.method='${method}' +baseline.epochs='${EXTERNAL_EPOCHS}' +baseline.max_train_steps='${EXTERNAL_MAX_TRAIN_STEPS}' +baseline.max_val_steps='${EXTERNAL_MAX_VAL_STEPS}' +baseline.batch_size='${dataset_batch_size}' +baseline.num_workers='${EXTERNAL_NUM_WORKERS}' +baseline.hidden_dim='${hidden_dim}' +baseline.patience='${EXTERNAL_PATIENCE}'"
         if run_cmd "${cmd}"; then
           echo "${method},${dataset},${seed},${frac},ok,completed" >>"${STATUS_FILE}"
         else

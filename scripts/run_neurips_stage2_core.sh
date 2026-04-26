@@ -53,6 +53,16 @@ run_cmd() {
   eval "${cmd}"
 }
 
+checkpoint_name_for() {
+  local dataset="$1"
+  local mode="$2"
+  local seed="$3"
+  local frac="$4"
+  local frac_tag
+  frac_tag="$(printf '%s' "${frac}" | tr '.' '_')"
+  echo "${dataset}_${mode}_seed${seed}_label${frac_tag}_stage_best.pt"
+}
+
 if [[ -z "${STAGE1_CKPT}" ]]; then
   echo "[error] STAGE1_CKPT is required"
   echo "Example: STAGE1_CKPT=/scratch/cld-trans/checkpoints/stage1_single_gpu_best.pt bash scripts/run_neurips_stage2_core.sh"
@@ -85,8 +95,8 @@ if [[ "${RUN_CORE_ABLATIONS}" == "1" ]]; then
   echo "[suite] Core ablations on ${ABLATION_DATASETS} (linear probe + downstream-only)"
   for dataset in ${ABLATION_DATASETS}; do
     for seed in ${ABLATION_SEEDS}; do
-      run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' linear_probe seed='${seed}' train.label_fraction=1.0 ${STAGE2_PAPER_OVERRIDES}"
-      run_cmd "bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' fine_tune seed='${seed}' train.label_fraction=1.0 train.pretrained_checkpoint=null ${STAGE2_PAPER_OVERRIDES}"
+      run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' linear_probe seed='${seed}' train.label_fraction=1.0 train.best_checkpoint_name='$(checkpoint_name_for "${dataset}" linear_probe "${seed}" 1.0)' ${STAGE2_PAPER_OVERRIDES}"
+      run_cmd "bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' fine_tune seed='${seed}' train.label_fraction=1.0 train.pretrained_checkpoint=null train.best_checkpoint_name='$(checkpoint_name_for "${dataset}" downstream_only "${seed}" 1.0)' ${STAGE2_PAPER_OVERRIDES}"
     done
   done
 fi

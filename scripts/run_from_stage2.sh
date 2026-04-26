@@ -45,6 +45,16 @@ run_cmd() {
   eval "${cmd}"
 }
 
+checkpoint_name_for() {
+  local dataset="$1"
+  local mode="$2"
+  local seed="$3"
+  local frac="$4"
+  local frac_tag
+  frac_tag="$(printf '%s' "${frac}" | tr '.' '_')"
+  echo "${dataset}_${mode}_seed${seed}_label${frac_tag}_stage_best.pt"
+}
+
 dataset_fast_overrides() {
   local dataset="$1"
   case "${dataset}" in
@@ -88,13 +98,14 @@ if [[ "${RUN_MAIN_SWEEP}" == "1" ]]; then
   for dataset in ${DATASETS}; do
     for seed in ${SEEDS}; do
       DATASET_OVERRIDES="${STAGE2_EXTRA_OVERRIDES}"
+      CKPT_NAME="$(checkpoint_name_for "${dataset}" "${MODE}" "${seed}" "1.0")"
       if [[ "${USE_STAGE2_FAST}" == "1" ]]; then
         DATASET_OVERRIDES="${STAGE2_FAST_COMMON_OVERRIDES} $(dataset_fast_overrides "${dataset}") ${DATASET_OVERRIDES}"
       fi
       if [[ -n "${DATASET_OVERRIDES}" ]]; then
-        run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction=1.0 ${DATASET_OVERRIDES}"
+        run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction=1.0 train.best_checkpoint_name='${CKPT_NAME}' ${DATASET_OVERRIDES}"
       else
-        run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction=1.0"
+        run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction=1.0 train.best_checkpoint_name='${CKPT_NAME}'"
       fi
     done
   done
@@ -109,13 +120,14 @@ if [[ "${RUN_FEWSHOT_SWEEP}" == "1" ]]; then
     for dataset in ${DATASETS}; do
       for seed in ${SEEDS}; do
         DATASET_OVERRIDES="${STAGE2_EXTRA_OVERRIDES}"
+        CKPT_NAME="$(checkpoint_name_for "${dataset}" "${MODE}" "${seed}" "${frac}")"
         if [[ "${USE_STAGE2_FAST}" == "1" ]]; then
           DATASET_OVERRIDES="${STAGE2_FAST_COMMON_OVERRIDES} $(dataset_fast_overrides "${dataset}") ${DATASET_OVERRIDES}"
         fi
         if [[ -n "${DATASET_OVERRIDES}" ]]; then
-          run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}' ${DATASET_OVERRIDES}"
+          run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}' train.best_checkpoint_name='${CKPT_NAME}' ${DATASET_OVERRIDES}"
         else
-          run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}'"
+          run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}' train.best_checkpoint_name='${CKPT_NAME}'"
         fi
       done
     done

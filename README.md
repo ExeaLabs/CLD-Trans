@@ -52,6 +52,9 @@ bash scripts/train_stage2.sh chbmit fine_tune
 # Evaluate a finished Stage 2 checkpoint on the held-out test split only
 STAGE2_CKPT=/scratch/cld-trans/checkpoints/stage_best.pt bash scripts/eval_stage2_test.sh chbmit fine_tune
 
+# Recover only missing Stage 2 checkpoints for specific seeds without rerunning the full suite
+STAGE1_CKPT=/scratch/cld-trans/checkpoints/stage1_single_gpu_best.pt SEEDS="123 7" EXTRA_OVERRIDES="train.epochs=8 train.val_split=0.1 train.test_split=0.1 train.max_train_steps=80 train.max_val_steps=null train.early_stopping.enabled=true train.early_stopping.patience=2 train.early_stopping.min_delta=1e-4 train.warmup_steps=0 train.ema.enabled=false" bash scripts/recover_stage2_checkpoints.sh
+
 # Safer Stage 2+ NeurIPS-main suite after Stage 1 is complete
 # Defaults: CHB-MIT + PTB-XL, seeds 42/123/7, 8-epoch cap, 80 train batches/epoch,
 # feature-linear + InceptionTime baselines, tiny CHB-MIT/PTB-XL LR sweep, early stopping,
@@ -63,6 +66,9 @@ STAGE1_CKPT=/scratch/cld-trans/checkpoints/stage1_single_gpu_best.pt DATASETS=ch
 
 # Optional full camera-ready expansion when compute is available
 STAGE1_CKPT=/scratch/cld-trans/checkpoints/stage1_single_gpu_best.pt SUITE_PRESET=full bash scripts/run_neurips_studies.sh
+
+# Repo-native external baseline families (BIOT/BENDR/EEG_GCNN/DYNOTEARS/Rhino)
+METHODS="BIOT BENDR EEG_GCNN DYNOTEARS Rhino" bash scripts/run_external_baselines_core.sh
 
 # Validate Stage 1 checkpoint compatibility with all Stage 2 dataset configs
 STAGE1_CKPT=/scratch/cld-trans/checkpoints/stage1_single_gpu_best.pt bash scripts/validate_neurips_setup.sh

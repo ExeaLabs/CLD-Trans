@@ -41,6 +41,22 @@ run_cmd() {
   eval "${cmd}"
 }
 
+checkpoint_name_for() {
+  local dataset="$1"
+  local mode="$2"
+  local seed="$3"
+  local frac="$4"
+  local lr="$5"
+  local wd="$6"
+  local bsz="$7"
+  local warmup="$8"
+  local frac_tag lr_tag wd_tag
+  frac_tag="$(printf '%s' "${frac}" | tr '.' '_')"
+  lr_tag="$(printf '%s' "${lr}" | tr '.-' '__')"
+  wd_tag="$(printf '%s' "${wd}" | tr '.-' '__')"
+  echo "${dataset}_${mode}_seed${seed}_label${frac_tag}_lr${lr_tag}_wd${wd_tag}_bsz${bsz}_warm${warmup}_stage_best.pt"
+}
+
 echo "[info] Running hyperparameter sweep"
 echo "[info] Hparam preset: ${HPARAM_PRESET}"
 echo "[info] Datasets: ${DATASETS}"
@@ -54,7 +70,8 @@ for dataset in ${DATASETS}; do
         for wd in ${WD_VALUES}; do
           for bsz in ${BATCH_VALUES}; do
             for warmup in ${WARMUP_VALUES}; do
-              cmd="bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}' train.lr='${lr}' train.weight_decay='${wd}' train.batch_size='${bsz}' train.warmup_steps='${warmup}'"
+              ckpt_name="$(checkpoint_name_for "${dataset}" "${MODE}" "${seed}" "${frac}" "${lr}" "${wd}" "${bsz}" "${warmup}")"
+              cmd="bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}' train.lr='${lr}' train.weight_decay='${wd}' train.batch_size='${bsz}' train.warmup_steps='${warmup}' train.best_checkpoint_name='${ckpt_name}'"
               if [[ -n "${COMMON_OVERRIDES}" ]]; then
                 cmd+=" ${COMMON_OVERRIDES}"
               fi
