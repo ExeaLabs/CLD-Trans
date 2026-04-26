@@ -14,6 +14,10 @@ SUITE_PRESET="${SUITE_PRESET:-quick}"
 # - quick: safer NeurIPS-main Stage2 pass after Stage1 is complete
 # - full: full NeurIPS camera-ready coverage
 if [[ "${SUITE_PRESET}" == "quick" ]]; then
+  : "${MAIN_CORE_EPOCHS:=12}"
+  : "${MAIN_WARMUP_STEPS:=500}"
+  : "${MAIN_EMA_ENABLED:=1}"
+  : "${MAIN_EMA_DECAY:=0.999}"
   : "${RUN_MAIN_RESULTS:=1}"
   : "${RUN_ABLATIONS:=1}"
   : "${RUN_HPARAM_SWEEP:=1}"
@@ -23,7 +27,7 @@ if [[ "${SUITE_PRESET}" == "quick" ]]; then
   : "${MAIN_DATASETS:=chbmit ptbxl}"
   : "${MAIN_SEEDS:=42 123 7}"
   : "${MAIN_LABEL_FRACTIONS:=1.0 0.1}"
-  : "${MAIN_STAGE2_EXTRA_OVERRIDES:=train.epochs=8 train.val_split=0.1 train.early_stopping.enabled=true train.early_stopping.patience=2 train.early_stopping.min_delta=1e-4 train.max_train_steps=80 train.max_val_steps=null train.warmup_steps=0 train.ema.enabled=false}"
+  : "${MAIN_STAGE2_EXTRA_OVERRIDES:=train.epochs=${MAIN_CORE_EPOCHS} train.val_split=0.1 train.early_stopping.enabled=true train.early_stopping.patience=3 train.early_stopping.min_delta=1e-4 train.max_train_steps=80 train.max_val_steps=null train.warmup_steps=${MAIN_WARMUP_STEPS} train.ema.enabled=${MAIN_EMA_ENABLED} train.ema.decay=${MAIN_EMA_DECAY}}"
   : "${MAIN_ZERO_SHOT:=1}"
   : "${MAIN_ZERO_SHOT_MAX_STEPS:=null}"
   : "${ABLATION_DATASETS:=chbmit}"
@@ -119,7 +123,7 @@ fi
 
 if [[ "${RUN_INCEPTIONTIME_BASELINES}" == "1" ]]; then
   echo "[suite] InceptionTime published baselines"
-  run_cmd "DATASETS='${MAIN_DATASETS}' SEEDS='${MAIN_SEEDS}' LABEL_FRACTIONS='${MAIN_LABEL_FRACTIONS}' INCEPTION_EPOCHS=8 INCEPTION_MAX_TRAIN_STEPS=80 INCEPTION_MAX_VAL_STEPS=null bash '${REPO_ROOT}/scripts/run_inceptiontime_baselines_core.sh'"
+  run_cmd "DATASETS='${MAIN_DATASETS}' SEEDS='${MAIN_SEEDS}' LABEL_FRACTIONS='${MAIN_LABEL_FRACTIONS}' INCEPTION_EPOCHS='${MAIN_CORE_EPOCHS:-12}' INCEPTION_MAX_TRAIN_STEPS=80 INCEPTION_MAX_VAL_STEPS=null bash '${REPO_ROOT}/scripts/run_inceptiontime_baselines_core.sh'"
 fi
 
 if [[ "${RUN_SYNTHETIC}" == "1" ]]; then
