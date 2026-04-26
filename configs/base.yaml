@@ -4,6 +4,7 @@ mode: synthetic_smoke
 eval:
   checkpoint: null
   max_steps: null
+  seed: null
 
 paths:
   scratch_root: /scratch/cld-trans
