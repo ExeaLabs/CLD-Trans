@@ -17,9 +17,20 @@ def _has_raw_ptbxl_files(root: Path) -> bool:
 	return (root / "ptbxl_database.csv").exists() and (root / "scp_statements.csv").exists()
 
 
+def _statement_code_from_row(row: dict[str, str]) -> str | None:
+	if row.get("scp_code"):
+		return row["scp_code"]
+	if row.get(""):
+		return row[""]
+	first_value = next(iter(row.values()), None)
+	if isinstance(first_value, str) and first_value:
+		return first_value
+	return None
+
+
 def _load_diagnostic_map(statements_path: Path) -> dict[str, str]:
 	diagnostic_map: dict[str, str] = {}
-	with statements_path.open("r", encoding="utf-8", newline="") as handle:
+	with statements_path.open("r", encoding="utf-8-sig", newline="") as handle:
 		reader = csv.DictReader(handle)
 		for row in reader:
 			try:
@@ -29,8 +40,9 @@ def _load_diagnostic_map(statements_path: Path) -> dict[str, str]:
 			if not is_diagnostic:
 				continue
 			diagnostic_class = row.get("diagnostic_class")
-			if diagnostic_class in PTBXL_CLASS_TO_INDEX:
-				diagnostic_map[row["scp_code"]] = diagnostic_class
+			statement_code = _statement_code_from_row(row)
+			if diagnostic_class in PTBXL_CLASS_TO_INDEX and statement_code is not None:
+				diagnostic_map[statement_code] = diagnostic_class
 	return diagnostic_map
 
 
