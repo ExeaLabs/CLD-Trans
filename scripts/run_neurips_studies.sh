@@ -15,8 +15,8 @@ SUITE_PRESET="${SUITE_PRESET:-quick}"
 # - full: full NeurIPS camera-ready coverage
 if [[ "${SUITE_PRESET}" == "quick" ]]; then
   : "${MAIN_CORE_EPOCHS:=12}"
-  : "${MAIN_WARMUP_STEPS:=500}"
-  : "${MAIN_EMA_ENABLED:=1}"
+  : "${MAIN_WARMUP_STEPS:=100}"
+  : "${MAIN_EMA_ENABLED:=0}"
   : "${MAIN_EMA_DECAY:=0.999}"
   : "${RUN_MAIN_RESULTS:=1}"
   : "${RUN_ABLATIONS:=1}"
