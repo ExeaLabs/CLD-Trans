@@ -38,8 +38,8 @@ EARLY_STOP_PATIENCE="${EARLY_STOP_PATIENCE:-3}"
 EARLY_STOP_MIN_DELTA="${EARLY_STOP_MIN_DELTA:-1e-4}"
 WARMUP_STEPS="${WARMUP_STEPS:-0}"
 EMA_ENABLED="${EMA_ENABLED:-false}"
-ABLATION_SEEDS="${ABLATION_SEEDS:-42}"
-ABLATION_DATASETS="${ABLATION_DATASETS:-chbmit}"
+ABLATION_DATASETS="${ABLATION_DATASETS:-}"
+ABLATION_SEEDS="${ABLATION_SEEDS:-}"
 HPARAM_DATASETS="${HPARAM_DATASETS:-chbmit ptbxl}"
 HPARAM_SEEDS="${HPARAM_SEEDS:-42}"
 HPARAM_EPOCHS="${HPARAM_EPOCHS:-3}"
@@ -65,6 +65,24 @@ checkpoint_name_for() {
   local frac_tag
   frac_tag="$(printf '%s' "${frac}" | tr '.' '_')"
   echo "${dataset}_${mode}_seed${seed}_label${frac_tag}_stage_best.pt"
+}
+
+dataset_fast_overrides() {
+  local dataset="$1"
+  case "${dataset}" in
+    chbmit)
+      echo "train.batch_size=320"
+      ;;
+    ptbxl)
+      echo "train.batch_size=640"
+      ;;
+    sleepedf)
+      echo "train.batch_size=512"
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
 }
 
 normalize_dataset_name() {
@@ -184,6 +202,13 @@ fi
 
 DATASETS="$(filter_datasets_from_start "${START_FROM_DATASET}")"
 
+if [[ -z "${ABLATION_DATASETS}" ]]; then
+  ABLATION_DATASETS="${DATASETS}"
+fi
+if [[ -z "${ABLATION_SEEDS}" ]]; then
+  ABLATION_SEEDS="${SEEDS}"
+fi
+
 if ! phase_enabled "validate_setup" "${START_FROM_PHASE}"; then
   VALIDATE_SETUP=0
 fi
@@ -252,8 +277,12 @@ if [[ "${RUN_CORE_ABLATIONS}" == "1" ]]; then
   echo "[suite] Core ablations on ${ABLATION_DATASETS} (linear probe + downstream-only)"
   for dataset in ${ABLATION_DATASETS}; do
     for seed in ${ABLATION_SEEDS}; do
-      run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' linear_probe seed='${seed}' train.label_fraction=1.0 train.best_checkpoint_name='$(checkpoint_name_for "${dataset}" linear_probe "${seed}" 1.0)' ${STAGE2_PAPER_OVERRIDES}"
-      run_cmd "bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' fine_tune seed='${seed}' train.label_fraction=1.0 train.pretrained_checkpoint=null train.best_checkpoint_name='$(checkpoint_name_for "${dataset}" downstream_only "${seed}" 1.0)' ${STAGE2_PAPER_OVERRIDES}"
+      ABLATION_OVERRIDES="${STAGE2_PAPER_OVERRIDES}"
+      if [[ "${USE_STAGE2_FAST}" == "1" ]]; then
+        ABLATION_OVERRIDES="train.num_workers=20 train.prefetch_factor=8 train.persistent_workers=true train.pin_memory=true train.log_interval=100 train.warmup_steps=0 train.ema.enabled=false $(dataset_fast_overrides "${dataset}") ${ABLATION_OVERRIDES}"
+      fi
+      run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' linear_probe seed='${seed}' train.label_fraction=1.0 train.best_checkpoint_name='$(checkpoint_name_for "${dataset}" linear_probe "${seed}" 1.0)' ${ABLATION_OVERRIDES}"
+      run_cmd "bash '${REPO_ROOT}/scripts/train_stage2.sh' '${dataset}' fine_tune seed='${seed}' train.label_fraction=1.0 train.pretrained_checkpoint=null train.best_checkpoint_name='$(checkpoint_name_for "${dataset}" downstream_only "${seed}" 1.0)' ${ABLATION_OVERRIDES}"
     done
   done
 fi
