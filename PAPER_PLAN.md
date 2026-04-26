@@ -29,9 +29,9 @@ actionable**. Concretely:
    driving a **lagged edge scorer**, and a **graph-conditioned Neural ODE**
    that integrates latent state through the inferred A(t).
 3. **Foundation-scale pretraining (§5).** The motif VQ-VAE would be pretrained on
-  **EEGMMIDB (>1.5k public EEG recordings)** and **MIMIC-IV-ECG (~800k ECGs)**; CHB-MIT,
-   PTB-XL, and Sleep-EDF serve as downstream **few- and zero-shot** transfer
-   benchmarks.
+  **EEGMMIDB (>1.5k public EEG recordings)** and **MIMIC-IV-ECG (~800k ECGs)**. The
+   lean submission centers downstream evaluation on CHB-MIT zero-shot seizure
+   propagation, with PTB-XL/Sleep-EDF retained as optional appendix transfer checks.
 4. **Headline empirical result (§6).** **Zero-shot focal-lead localization
   on CHB-MIT** is the headline hypothesis: without training on seizure
   labels, CLD-Trans should recover clinician-annotated onset zones from the
@@ -119,11 +119,13 @@ Pretraining uses the full open corpora; data lives on the training server's
 ### 5.2 Downstream Benchmarks
 | Dataset   | Channels | Task | Regime |
 |-----------|---------:|------|--------|
-| CHB-MIT   | 23 EEG   | Seizure detection + **focal-lead localization** | **zero-shot** + 1%/10% few-shot |
-| PTB-XL    | 12 ECG   | 5-superclass arrhythmia | 1%/10%/100% few-shot |
-| Sleep-EDF | 2–7 EEG/EOG | 5-stage sleep scoring | 1%/10%/100% few-shot |
+| CHB-MIT   | 23 EEG   | Seizure detection + **focal-lead localization** | **primary** zero-shot + 10%/100% few-shot |
+| PTB-XL    | 12 ECG   | 5-superclass arrhythmia | compact 10%/100% ECG transfer |
+| Sleep-EDF | 2–7 EEG/EOG | 5-stage sleep scoring | optional sleep transfer appendix |
 
-5-seed protocol (`42, 123, 7, 0, 256`).
+Default post-Stage-1 runs use three seeds (`42, 123, 7`) on CHB-MIT and PTB-XL,
+an uncapped CHB-MIT zero-shot evaluation, a tiny validation-only learning-rate
+sanity sweep, and `42, 123, 7, 0, 256` only for the camera-ready appendix.
 
 ---
 
@@ -136,8 +138,8 @@ Pretraining uses the full open corpora; data lives on the training server's
   directly from the learned $\tau$ matrix at seizure-onset windows.
 
 ### 6.2 Few-Shot Transfer
-- **Table 2**: AUROC/AUPRC under 1% / 10% / 100% label budgets on all three
-  downstream datasets.
+- **Table 2**: AUROC/AUPRC under 10% / 100% label budgets on CHB-MIT and
+  PTB-XL, both with three-seed uncertainty.
 
 ### 6.3 Identifiability Validation (Synthetic)
 - **Table 3**: on synthetic LD-SEM data with known ground-truth $\tau$ and

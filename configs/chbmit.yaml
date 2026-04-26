@@ -8,12 +8,19 @@ data:
   dataset: chbmit
   path: /scratch/cld-trans/datasets/chb-mit
   sample_rate: 256.0
-  num_steps: 7680
-  window_seconds: 30.0
+  num_steps: 4096
+  window_seconds: 16.0
+  negative_keep_ratio: 0.125
+  seizure_margin_seconds: 300.0
 model:
   num_channels: 23
   num_classes: 2
+  codebook_size: 256
+  motif_dim: 64
+  hidden_dim: 64
   tau_max: 1.0
+  top_k: 4
+  ode_solver: rk4
 train:
   device: cuda
   precision: bf16
@@ -24,11 +31,20 @@ train:
   pin_memory: true
   lr: 1.0e-4
   max_steps: null
-  epochs: 60
-  warmup_steps: 1000
+  max_train_steps: null
+  max_val_steps: null
+  epochs: 8
+  warmup_steps: 0
   log_interval: 50
   task_type: single_label
   focal_gamma: 2.0
-  ema:
+  val_split: 0.1
+  monitor: val_loss
+  early_stopping:
     enabled: true
+    mode: min
+    patience: 2
+    min_delta: 1.0e-4
+  ema:
+    enabled: false
     decay: 0.999

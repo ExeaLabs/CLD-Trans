@@ -12,7 +12,7 @@ MODE="${MODE:-fine_tune}"
 
 # Fast mode: apply Stage 2 dataset-specific throughput knobs tuned for ROCm.
 # Set USE_STAGE2_FAST=0 to disable.
-USE_STAGE2_FAST="${USE_STAGE2_FAST:-1}"
+USE_STAGE2_FAST="${USE_STAGE2_FAST:-0}"
 STAGE2_FAST_COMMON_OVERRIDES="${STAGE2_FAST_COMMON_OVERRIDES:-train.num_workers=20 train.prefetch_factor=8 train.persistent_workers=true train.pin_memory=true train.log_interval=100 train.warmup_steps=0 train.ema.enabled=false}"
 STAGE2_FAST_OVERRIDES_CHBMIT="${STAGE2_FAST_OVERRIDES_CHBMIT:-train.batch_size=320}"
 STAGE2_FAST_OVERRIDES_PTBXL="${STAGE2_FAST_OVERRIDES_PTBXL:-train.batch_size=640}"
@@ -23,14 +23,14 @@ STAGE2_EXTRA_OVERRIDES="${STAGE2_EXTRA_OVERRIDES:-}"
 
 # Space-separated lists.
 DATASETS="${DATASETS:-chbmit ptbxl sleepedf}"
-SEEDS="${SEEDS:-42}"
-LABEL_FRACTIONS="${LABEL_FRACTIONS:-1.0}"
+SEEDS="${SEEDS:-42 123 7}"
+LABEL_FRACTIONS="${LABEL_FRACTIONS:-1.0 0.1 0.01}"
 
 # Toggles.
 RUN_MAIN_SWEEP="${RUN_MAIN_SWEEP:-1}"
-RUN_FEWSHOT_SWEEP="${RUN_FEWSHOT_SWEEP:-0}"
-RUN_ZERO_SHOT="${RUN_ZERO_SHOT:-0}"
-RUN_SYNTHETIC="${RUN_SYNTHETIC:-0}"
+RUN_FEWSHOT_SWEEP="${RUN_FEWSHOT_SWEEP:-1}"
+RUN_ZERO_SHOT="${RUN_ZERO_SHOT:-1}"
+RUN_SYNTHETIC="${RUN_SYNTHETIC:-1}"
 RUN_FIGURES="${RUN_FIGURES:-0}"
 
 # Set to 1 to print commands without executing.

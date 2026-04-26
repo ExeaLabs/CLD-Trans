@@ -9,6 +9,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
+from engine.evaluator import classification_metrics
 from losses.task_loss import classification_loss
 
 
@@ -90,6 +91,8 @@ def evaluate_stage2_epoch(
 ) -> dict[str, float]:
     model.eval()
     totals = torch.zeros(2, device=device, dtype=torch.float32)
+    logits_chunks: list[torch.Tensor] = []
+    target_chunks: list[torch.Tensor] = []
     steps = 0
     progress = tqdm(loader, desc=f"Stage2 Val {epoch}/{num_epochs}", leave=False) if show_progress else loader
     use_autocast = device.type in {"cuda", "xpu"} and precision in {"bf16", "fp16"}
@@ -102,6 +105,8 @@ def evaluate_stage2_epoch(
                 out = model(x, mode=mode)
                 loss = classification_loss(out["logits"], y, task_type=task_type, focal_gamma=focal_gamma)
             totals[0] += loss.detach()
+            logits_chunks.append(out["logits"].detach().cpu())
+            target_chunks.append(y.detach().cpu())
             if task_type == "single_label":
                 totals[1] += (out["logits"].argmax(dim=-1) == y).float().mean().detach()
             steps += 1
@@ -113,8 +118,13 @@ def evaluate_stage2_epoch(
             if max_steps is not None and steps >= max_steps:
                 break
     denom = max(steps, 1)
-    return {
+    metrics = {
         "loss": float((totals[0] / denom).item()),
         "accuracy": float((totals[1] / denom).item()),
         "steps": float(steps),
     }
+    if logits_chunks and target_chunks:
+        all_logits = torch.cat(logits_chunks, dim=0)
+        all_targets = torch.cat(target_chunks, dim=0)
+        metrics.update(classification_metrics(all_logits, all_targets, task_type=task_type))
+    return metrics

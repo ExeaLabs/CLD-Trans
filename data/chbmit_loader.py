@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import re
 from pathlib import Path
 
@@ -66,7 +67,15 @@ class CHBMITDataset(LazySignalDataset):
 		num_channels: int,
 		num_steps: int,
 		sample_rate: float,
+		negative_keep_ratio: float = 1.0,
+		seizure_margin_seconds: float = 0.0,
+		random_seed: int = 42,
 	) -> None:
+		if not (0.0 < float(negative_keep_ratio) <= 1.0):
+			raise ValueError("negative_keep_ratio must be in (0, 1]")
+		if float(seizure_margin_seconds) < 0.0:
+			raise ValueError("seizure_margin_seconds must be >= 0")
+
 		tensor_dataset = maybe_tensor_dataset(
 			path,
 			num_channels=num_channels,
@@ -81,6 +90,7 @@ class CHBMITDataset(LazySignalDataset):
 		root = Path(path)
 		if not root.exists():
 			raise FileNotFoundError(f"dataset path not found: {root}")
+		rng = random.Random(int(random_seed))
 		window_seconds = num_steps / float(sample_rate)
 		records: list[SignalRecord] = []
 		summary_cache: dict[Path, dict[str, list[tuple[float, float]]]] = {}
@@ -92,10 +102,22 @@ class CHBMITDataset(LazySignalDataset):
 				_parse_summary(subject_dir / f"{subject_dir.name}-summary.txt"),
 			)
 			seizure_intervals = summary.get(edf_path.name, [])
+			margin_intervals = [
+				(max(0.0, begin - float(seizure_margin_seconds)), end + float(seizure_margin_seconds))
+				for begin, end in seizure_intervals
+			]
 			for record in _window_records(edf_path, duration, window_seconds):
 				start = 0.0 if record.start_time is None else record.start_time
 				stop = start + window_seconds
-				label = int(any(begin < stop and end > start for begin, end in seizure_intervals))
+				is_positive = any(begin < stop and end > start for begin, end in seizure_intervals)
+				if not is_positive and margin_intervals:
+					is_near_seizure = any(begin < stop and end > start for begin, end in margin_intervals)
+					if is_near_seizure:
+						continue
+				if not is_positive and float(negative_keep_ratio) < 1.0:
+					if rng.random() > float(negative_keep_ratio):
+						continue
+				label = int(is_positive)
 				records.append(
 					SignalRecord(
 						path=record.path,

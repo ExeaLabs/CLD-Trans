@@ -43,11 +43,21 @@ def _instantiate_dataset(cfg: DictConfig, dataset_name: str) -> Dataset:
     dataset_cls = DATASET_REGISTRY.get(dataset_name)
     if dataset_cls is None:
         raise ValueError(f"unknown dataset: {dataset_name}")
+    dataset_kwargs = {
+        "num_channels": int(cfg.model.num_channels),
+        "num_steps": int(cfg.data.num_steps),
+        "sample_rate": float(cfg.data.sample_rate),
+    }
+    if dataset_name == "chbmit":
+        dataset_kwargs["negative_keep_ratio"] = float(cfg.data.get("negative_keep_ratio", 1.0))
+        dataset_kwargs["seizure_margin_seconds"] = float(cfg.data.get("seizure_margin_seconds", 0.0))
+        dataset_kwargs["random_seed"] = int(cfg.seed)
+    if dataset_name in {"ptbxl", "sleepedf"}:
+        dataset_kwargs["majority_keep_ratio"] = float(cfg.data.get("majority_keep_ratio", 1.0))
+        dataset_kwargs["random_seed"] = int(cfg.seed)
     return dataset_cls(
         _resolve_path(cfg, dataset_name),
-        num_channels=int(cfg.model.num_channels),
-        num_steps=int(cfg.data.num_steps),
-        sample_rate=float(cfg.data.sample_rate),
+        **dataset_kwargs,
     )
 
 

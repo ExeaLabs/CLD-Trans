@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 from data.base_loader import (
@@ -65,6 +66,30 @@ def _load_records(root: Path, window_seconds: float) -> list[SignalRecord]:
 	return records
 
 
+def _downsample_majority_records(
+	records: list[SignalRecord],
+	majority_keep_ratio: float,
+	random_seed: int,
+) -> list[SignalRecord]:
+	if not records or majority_keep_ratio >= 1.0:
+		return records
+
+	counts: dict[int, int] = {}
+	for record in records:
+		counts[record.label] = counts.get(record.label, 0) + 1
+	majority_label = max(counts.items(), key=lambda item: item[1])[0]
+
+	rng = random.Random(int(random_seed))
+	filtered: list[SignalRecord] = []
+	for record in records:
+		if record.label != majority_label:
+			filtered.append(record)
+			continue
+		if rng.random() <= majority_keep_ratio:
+			filtered.append(record)
+	return filtered
+
+
 class SleepEDFDataset(LazySignalDataset):
 	def __init__(
 		self,
@@ -73,7 +98,12 @@ class SleepEDFDataset(LazySignalDataset):
 		num_channels: int,
 		num_steps: int,
 		sample_rate: float,
+		majority_keep_ratio: float = 1.0,
+		random_seed: int = 42,
 	) -> None:
+		if not (0.0 < float(majority_keep_ratio) <= 1.0):
+			raise ValueError("majority_keep_ratio must be in (0, 1]")
+
 		tensor_dataset = maybe_tensor_dataset(
 			path,
 			num_channels=num_channels,
@@ -89,6 +119,11 @@ class SleepEDFDataset(LazySignalDataset):
 		if not root.exists():
 			raise FileNotFoundError(f"dataset path not found: {root}")
 		records = _load_records(root, num_steps / float(sample_rate))
+		records = _downsample_majority_records(
+			records,
+			majority_keep_ratio=float(majority_keep_ratio),
+			random_seed=int(random_seed),
+		)
 		super().__init__(
 			records,
 			num_channels=num_channels,

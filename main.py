@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import inspect
 import math
 import os
@@ -172,11 +173,24 @@ def _load_pretrained_weights(model: CLDTransformer, cfg: DictConfig, *, is_main:
         for key, value in state_dict.items()
         if key in model_state and model_state[key].shape == value.shape
     }
+    incompatible_shape = [
+        key for key, value in state_dict.items() if key in model_state and model_state[key].shape != value.shape
+    ]
+    not_in_model = [key for key in state_dict if key not in model_state]
     missing_keys, unexpected_keys = model.load_state_dict(compatible, strict=False)
     if is_main:
         loaded = len(compatible)
-        skipped = len(state_dict) - loaded
+        skipped = len(incompatible_shape) + len(not_in_model)
         print(f"Loaded pretrained weights from {path} ({loaded} tensors, skipped {skipped})")
+        if incompatible_shape:
+            print(f"Skipped due to shape mismatch: {len(incompatible_shape)}")
+        if not_in_model:
+            print(f"Skipped because key not present in target model: {len(not_in_model)}")
+        if skipped > 0:
+            print(
+                "Note: this is expected when Stage 1 and Stage 2 differ in architecture "
+                "(for example channel count, class head, or lag-graph dimensions)."
+            )
         if missing_keys:
             print(f"Missing keys after load: {len(missing_keys)}")
         if unexpected_keys:
@@ -276,8 +290,11 @@ def run_stage2_zero_shot(cfg: DictConfig) -> dict[str, float]:
 
     predicted_hist = torch.zeros(int(cfg.model.num_channels), dtype=torch.float64)
     windows = 0
+    steps = 0
     focal_matches = 0.0
     focal_total = 0
+    max_eval_steps = cfg.get("eval", {}).get("max_steps")
+    max_eval_steps_value = None if max_eval_steps is None else int(max_eval_steps)
 
     use_autocast = device.type in {"cuda", "xpu"} and str(cfg.train.get("precision", "fp32")) in {"bf16", "fp16"}
     autocast_dtype = torch.bfloat16 if str(cfg.train.get("precision", "fp32")) == "bf16" else torch.float16
@@ -299,8 +316,12 @@ def run_stage2_zero_shot(cfg: DictConfig) -> dict[str, float]:
                 target = batch["focal_lead"].to(device)
                 focal_matches += float((target == focal_idx).float().sum().item())
                 focal_total += int(target.numel())
+            steps += 1
+            if max_eval_steps_value is not None and steps >= max_eval_steps_value:
+                break
 
     metrics: dict[str, float] = {
+        "steps": float(steps),
         "windows": float(windows),
     }
     for index, count in enumerate(predicted_hist.tolist()):
@@ -356,6 +377,63 @@ def build_epoch_metrics(train_metrics: dict[str, float], val_metrics: dict[str, 
 def checkpoint_path_for(cfg: DictConfig) -> Path:
     checkpoint_name = str(cfg.train.get("best_checkpoint_name", f"{cfg.mode}_best.pt"))
     return Path(str(cfg.paths.checkpoint_dir)) / checkpoint_name
+
+
+def _result_record_path(cfg: DictConfig, *, run_kind: str) -> Path:
+    dataset = str(cfg.data.get("dataset", "multi"))
+    seed = int(cfg.seed)
+    label_fraction = float(cfg.train.get("label_fraction", 1.0))
+    train_mode = str(cfg.train.get("mode", "na"))
+    name = (
+        f"{run_kind}__dataset={dataset}__seed={seed}__"
+        f"mode={train_mode}__label={label_fraction:.3f}.json"
+    )
+    return Path(str(cfg.paths.results_dir)) / name
+
+
+def _write_result_record(cfg: DictConfig, *, run_kind: str, metrics: dict[str, Any]) -> None:
+    path = _result_record_path(cfg, run_kind=run_kind)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, Any] = {
+        "run_kind": run_kind,
+        "mode": str(cfg.mode),
+        "seed": int(cfg.seed),
+        "dataset": str(cfg.data.get("dataset", "multi")),
+        "label_fraction": float(cfg.train.get("label_fraction", 1.0)),
+        "train_mode": str(cfg.train.get("mode", "na")),
+        "model": {
+            "num_channels": int(cfg.model.num_channels),
+            "num_classes": int(cfg.model.num_classes),
+            "codebook_size": int(cfg.model.codebook_size),
+            "motif_dim": int(cfg.model.motif_dim),
+            "hidden_dim": int(cfg.model.hidden_dim),
+            "tau_max": float(cfg.model.tau_max),
+            "top_k": None if cfg.model.top_k is None else int(cfg.model.top_k),
+            "ode_solver": str(cfg.model.ode_solver),
+        },
+        "train": {
+            "epochs": int(cfg.train.epochs),
+            "batch_size": int(cfg.train.batch_size),
+            "lr": float(cfg.train.lr),
+            "weight_decay": float(cfg.train.weight_decay),
+            "precision": str(cfg.train.get("precision", "fp32")),
+            "warmup_steps": int(cfg.train.get("warmup_steps", 0)),
+            "val_split": float(cfg.train.get("val_split", 0.0)),
+            "max_steps": None if cfg.train.get("max_steps") is None else int(cfg.train.get("max_steps")),
+            "max_train_steps": None
+            if cfg.train.get("max_train_steps") is None
+            else int(cfg.train.get("max_train_steps")),
+            "max_val_steps": None
+            if cfg.train.get("max_val_steps") is None
+            else int(cfg.train.get("max_val_steps")),
+            "early_stopping": OmegaConf.to_container(cfg.train.get("early_stopping", {}), resolve=True),
+            "pretrained_checkpoint": None
+            if cfg.train.get("pretrained_checkpoint") in {None, "null"}
+            else str(cfg.train.get("pretrained_checkpoint")),
+        },
+        "metrics": metrics,
+    }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
 def build_model(cfg: DictConfig) -> CLDTransformer:
@@ -522,6 +600,11 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
     task_type = str(cfg.train.get("task_type", "single_label"))
     focal_gamma = cfg.train.get("focal_gamma")
     focal_gamma_value = None if focal_gamma is None else float(focal_gamma)
+    max_steps = None if cfg.train.get("max_steps") is None else int(cfg.train.max_steps)
+    max_train_steps = cfg.train.get("max_train_steps")
+    max_val_steps = cfg.train.get("max_val_steps")
+    max_train_steps_value = max_steps if max_train_steps is None else int(max_train_steps)
+    max_val_steps_value = max_steps if max_val_steps is None else int(max_val_steps)
     for epoch_index in range(epochs):
         if distributed and isinstance(loader.sampler, DistributedSampler):
             loader.sampler.set_epoch(epoch_index)
@@ -535,7 +618,7 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
             task_type=task_type,
             focal_gamma=focal_gamma_value,
             mode=train_mode,
-            max_steps=None if cfg.train.max_steps is None else int(cfg.train.max_steps),
+            max_steps=max_train_steps_value,
             epoch=epoch_index + 1,
             num_epochs=epochs,
             precision=str(cfg.train.get("precision", "fp32")),
@@ -559,7 +642,7 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
                 task_type=task_type,
                 focal_gamma=focal_gamma_value,
                 mode=train_mode,
-                max_steps=None if cfg.train.max_steps is None else int(cfg.train.max_steps),
+                max_steps=max_val_steps_value,
                 epoch=epoch_index + 1,
                 num_epochs=epochs,
                 precision=str(cfg.train.get("precision", "fp32")),
@@ -609,14 +692,18 @@ def _main(cfg: DictConfig) -> None:
     mode = str(cfg.mode)
     try:
         if mode == "synthetic_smoke":
-            run_synthetic_smoke(cfg)
+            metrics = run_synthetic_smoke(cfg)
+            _write_result_record(cfg, run_kind="synthetic_smoke", metrics=metrics)
         elif mode == "stage1":
-            run_stage1(cfg)
+            metrics = run_stage1(cfg)
+            _write_result_record(cfg, run_kind="stage1", metrics=metrics)
         elif mode == "stage2":
             if bool(cfg.get("eval", {}).get("zero_shot", False)):
-                run_stage2_zero_shot(cfg)
+                metrics = run_stage2_zero_shot(cfg)
+                _write_result_record(cfg, run_kind="stage2_zero_shot", metrics=metrics)
             else:
-                run_stage2(cfg)
+                metrics = run_stage2(cfg)
+                _write_result_record(cfg, run_kind="stage2", metrics=metrics)
         else:
             raise ValueError(f"unknown mode: {mode}")
     finally:

@@ -48,6 +48,20 @@ bash scripts/train_stage1.sh
 
 # Downstream evaluation skeleton
 bash scripts/train_stage2.sh chbmit fine_tune
+
+# Safer Stage 2+ NeurIPS-main suite after Stage 1 is complete
+# Defaults: CHB-MIT + PTB-XL, seeds 42/123/7, 8-epoch cap, 80 train batches/epoch,
+# feature-linear + InceptionTime baselines, tiny CHB-MIT/PTB-XL LR sweep, early stopping, uncapped zero-shot, ablations, and validation metrics.
+STAGE1_CKPT=/scratch/cld-trans/checkpoints/stage1_single_gpu_best.pt bash scripts/run_neurips_studies.sh
+
+# Emergency shorter run if server time becomes tight
+STAGE1_CKPT=/scratch/cld-trans/checkpoints/stage1_single_gpu_best.pt DATASETS=chbmit CORE_EPOCHS=6 STAGE2_MAX_TRAIN_STEPS=40 ZERO_SHOT_MAX_STEPS=120 bash scripts/run_neurips_stage2_core.sh
+
+# Optional full camera-ready expansion when compute is available
+STAGE1_CKPT=/scratch/cld-trans/checkpoints/stage1_single_gpu_best.pt SUITE_PRESET=full bash scripts/run_neurips_studies.sh
+
+# Validate Stage 1 checkpoint compatibility with all Stage 2 dataset configs
+STAGE1_CKPT=/scratch/cld-trans/checkpoints/stage1_single_gpu_best.pt bash scripts/validate_neurips_setup.sh
 ```
 
 ## Server handoff

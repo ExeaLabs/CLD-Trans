@@ -8,8 +8,8 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 STAGE1_CKPT="${STAGE1_CKPT:-}"
 
 # Study controls.
-DATASETS="${DATASETS:-chbmit ptbxl sleepedf}"
-SEEDS="${SEEDS:-42 123 7 0 256}"
+DATASETS="${DATASETS:-chbmit}"
+SEEDS="${SEEDS:-42}"
 DRY_RUN="${DRY_RUN:-0}"
 
 # Optional extra Hydra overrides appended to every stage2 train command.

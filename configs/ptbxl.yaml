@@ -8,12 +8,18 @@ data:
   dataset: ptbxl
   path: /scratch/cld-trans/datasets/ptb-xl
   sample_rate: 500.0
-  num_steps: 5000
-  window_seconds: 10.0
+  num_steps: 3000
+  window_seconds: 6.0
+  majority_keep_ratio: 0.35
 model:
   num_channels: 12
   num_classes: 5
+  codebook_size: 256
+  motif_dim: 64
+  hidden_dim: 64
   tau_max: 0.08
+  top_k: 4
+  ode_solver: rk4
 train:
   device: cuda
   precision: bf16
@@ -24,10 +30,19 @@ train:
   pin_memory: true
   lr: 1.0e-4
   max_steps: null
-  epochs: 60
-  warmup_steps: 1000
+  max_train_steps: null
+  max_val_steps: null
+  epochs: 8
+  warmup_steps: 0
   log_interval: 50
-  task_type: multi_label
-  ema:
+  task_type: single_label
+  val_split: 0.1
+  monitor: val_loss
+  early_stopping:
     enabled: true
+    mode: min
+    patience: 2
+    min_delta: 1.0e-4
+  ema:
+    enabled: false
     decay: 0.999
