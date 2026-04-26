@@ -27,13 +27,16 @@ RUN_ROBUSTNESS="${RUN_ROBUSTNESS:-0}"
 RUN_EXTERNAL_BASELINES="${RUN_EXTERNAL_BASELINES:-0}"
 RUN_AGGREGATION="${RUN_AGGREGATION:-1}"
 
-# Main-track runtime knobs: still capped, but strong enough for paper tables.
-CORE_EPOCHS="${CORE_EPOCHS:-8}"
+# Main-track runtime knobs: still capped, but tilted slightly toward better validation selection.
+CORE_EPOCHS="${CORE_EPOCHS:-12}"
 STAGE2_VAL_SPLIT="${STAGE2_VAL_SPLIT:-0.1}"
 STAGE2_MAX_TRAIN_STEPS="${STAGE2_MAX_TRAIN_STEPS:-80}"
 STAGE2_MAX_VAL_STEPS="${STAGE2_MAX_VAL_STEPS:-null}"
-EARLY_STOP_PATIENCE="${EARLY_STOP_PATIENCE:-2}"
+EARLY_STOP_PATIENCE="${EARLY_STOP_PATIENCE:-3}"
 EARLY_STOP_MIN_DELTA="${EARLY_STOP_MIN_DELTA:-1e-4}"
+WARMUP_STEPS="${WARMUP_STEPS:-500}"
+EMA_ENABLED="${EMA_ENABLED:-1}"
+EMA_DECAY="${EMA_DECAY:-0.999}"
 ABLATION_SEEDS="${ABLATION_SEEDS:-42}"
 ABLATION_DATASETS="${ABLATION_DATASETS:-chbmit}"
 HPARAM_DATASETS="${HPARAM_DATASETS:-chbmit ptbxl}"
@@ -41,7 +44,7 @@ HPARAM_SEEDS="${HPARAM_SEEDS:-42}"
 HPARAM_EPOCHS="${HPARAM_EPOCHS:-3}"
 HPARAM_MAX_TRAIN_STEPS="${HPARAM_MAX_TRAIN_STEPS:-20}"
 ROBUSTNESS_SEEDS="${ROBUSTNESS_SEEDS:-42}"
-STAGE2_PAPER_OVERRIDES="train.epochs=${CORE_EPOCHS} train.val_split=${STAGE2_VAL_SPLIT} train.early_stopping.enabled=true train.early_stopping.patience=${EARLY_STOP_PATIENCE} train.early_stopping.min_delta=${EARLY_STOP_MIN_DELTA} train.max_train_steps=${STAGE2_MAX_TRAIN_STEPS} train.max_val_steps=${STAGE2_MAX_VAL_STEPS} train.warmup_steps=0 train.ema.enabled=false"
+STAGE2_PAPER_OVERRIDES="train.epochs=${CORE_EPOCHS} train.val_split=${STAGE2_VAL_SPLIT} train.early_stopping.enabled=true train.early_stopping.patience=${EARLY_STOP_PATIENCE} train.early_stopping.min_delta=${EARLY_STOP_MIN_DELTA} train.max_train_steps=${STAGE2_MAX_TRAIN_STEPS} train.max_val_steps=${STAGE2_MAX_VAL_STEPS} train.warmup_steps=${WARMUP_STEPS} train.ema.enabled=${EMA_ENABLED} train.ema.decay=${EMA_DECAY}"
 HPARAM_OVERRIDES="train.epochs=${HPARAM_EPOCHS} train.val_split=${STAGE2_VAL_SPLIT} train.early_stopping.enabled=true train.early_stopping.patience=1 train.early_stopping.min_delta=${EARLY_STOP_MIN_DELTA} train.max_train_steps=${HPARAM_MAX_TRAIN_STEPS} train.max_val_steps=${STAGE2_MAX_VAL_STEPS} train.ema.enabled=false"
 
 run_cmd() {

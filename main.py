@@ -27,7 +27,7 @@ except Exception:  # pragma: no cover - hydra is installed in normal runs
 from analysis.identifiability import edge_support_f1, tau_mae
 from data import build_dataset_from_config
 from data.synthetic_ldsem import generate_ldsem_batch
-from engine.callbacks import EMA, EarlyStopping, save_checkpoint
+from engine.callbacks import EMA, EarlyStopping, clone_state_dict, save_checkpoint
 from engine.trainer_stage1 import evaluate_stage1_epoch, train_stage1_epoch
 from engine.trainer_stage2 import evaluate_stage2_epoch, train_stage2_epoch
 from models.cld_transformer import CLDTransformer, CLDTransformerConfig
@@ -678,6 +678,7 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
         )
         train_metrics = _maybe_allreduce_metrics(train_metrics, device)
         val_metrics = None
+        ema_eval_state_dict: dict[str, torch.Tensor] | None = None
         if val_loader is not None:
             if ema is not None:
                 ema.store(model_for_ops)
@@ -698,6 +699,7 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
                 show_progress=is_main,
             )
             if ema is not None:
+                ema_eval_state_dict = clone_state_dict(model_for_ops)
                 ema.restore(model_for_ops)
             val_metrics = _maybe_allreduce_metrics(val_metrics, device)
         last_metrics = build_epoch_metrics(train_metrics, val_metrics)
@@ -713,9 +715,7 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
             )
             if improved_for_selection:
                 best_monitor_value = monitored_float
-                best_state_dict = {
-                    key: value.detach().cpu().clone() for key, value in model_for_ops.state_dict().items()
-                }
+                best_state_dict = ema_eval_state_dict or clone_state_dict(model_for_ops)
             if early_stopper is None:
                 continue
             if is_main:
@@ -728,7 +728,13 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
                 improved = bool(control[0].item())
                 should_stop = bool(control[1].item())
             if improved and is_main:
-                save_checkpoint(best_checkpoint_path, _model_for_checkpoint(model), optimizer, epoch_index + 1)
+                if ema_eval_state_dict is not None:
+                    raw_state_dict = clone_state_dict(model_for_ops)
+                    model_for_ops.load_state_dict(ema_eval_state_dict)
+                    save_checkpoint(best_checkpoint_path, _model_for_checkpoint(model), optimizer, epoch_index + 1)
+                    model_for_ops.load_state_dict(raw_state_dict)
+                else:
+                    save_checkpoint(best_checkpoint_path, _model_for_checkpoint(model), optimizer, epoch_index + 1)
                 print(f"Saved best checkpoint to {best_checkpoint_path}")
             if should_stop:
                 if is_main:
