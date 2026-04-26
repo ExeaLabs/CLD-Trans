@@ -233,6 +233,13 @@ def _configure_stage2_trainable_params(model: CLDTransformer, mode: str) -> None
         param.requires_grad = True
 
 
+def _dataset_split_seed(cfg: DictConfig) -> int:
+    eval_cfg = cfg.get("eval")
+    if str(cfg.get("mode", "")) == "stage2_test" and eval_cfg is not None and eval_cfg.get("seed") is not None:
+        return int(eval_cfg.get("seed"))
+    return int(cfg.seed)
+
+
 def _subset_training_dataset(dataset: Dataset[Any], cfg: DictConfig) -> Dataset[Any]:
     label_fraction = float(cfg.train.get("label_fraction", 1.0))
     if label_fraction <= 0.0 or label_fraction > 1.0:
@@ -389,7 +396,7 @@ def split_dataset(
     train_size = dataset_len - val_size - test_size
     if train_size <= 0:
         raise ValueError("dataset split leaves no training samples")
-    generator = torch.Generator().manual_seed(int(cfg.seed))
+    generator = torch.Generator().manual_seed(_dataset_split_seed(cfg))
     splits = random_split(dataset, [train_size, val_size, test_size], generator=generator)
     train_dataset = splits[0]
     val_dataset = None if val_size == 0 else splits[1]

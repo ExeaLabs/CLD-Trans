@@ -31,6 +31,13 @@ DEFAULT_DATASET_DIRS = {
 }
 
 
+def _dataset_random_seed(cfg: DictConfig) -> int:
+    eval_cfg = cfg.get("eval")
+    if str(cfg.get("mode", "")) == "stage2_test" and eval_cfg is not None and eval_cfg.get("seed") is not None:
+        return int(eval_cfg.get("seed"))
+    return int(cfg.seed)
+
+
 def _resolve_path(cfg: DictConfig, dataset_name: str) -> Path:
     configured_dataset = cfg.data.get("dataset")
     explicit_path = cfg.data.get("path")
@@ -51,10 +58,10 @@ def _instantiate_dataset(cfg: DictConfig, dataset_name: str) -> Dataset:
     if dataset_name == "chbmit":
         dataset_kwargs["negative_keep_ratio"] = float(cfg.data.get("negative_keep_ratio", 1.0))
         dataset_kwargs["seizure_margin_seconds"] = float(cfg.data.get("seizure_margin_seconds", 0.0))
-        dataset_kwargs["random_seed"] = int(cfg.seed)
+        dataset_kwargs["random_seed"] = _dataset_random_seed(cfg)
     if dataset_name in {"ptbxl", "sleepedf"}:
         dataset_kwargs["majority_keep_ratio"] = float(cfg.data.get("majority_keep_ratio", 1.0))
-        dataset_kwargs["random_seed"] = int(cfg.seed)
+        dataset_kwargs["random_seed"] = _dataset_random_seed(cfg)
     return dataset_cls(
         _resolve_path(cfg, dataset_name),
         **dataset_kwargs,

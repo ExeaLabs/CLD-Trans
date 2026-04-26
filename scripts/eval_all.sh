@@ -11,6 +11,7 @@ SUMMARY_CSV="${SUMMARY_CSV:-${RESULTS_DIR}/stage2_test_summary.csv}"
 DATASETS="${DATASETS:-chbmit ptbxl}"
 SEEDS="${SEEDS:-42 123 7}"
 LABEL_FRACTIONS="${LABEL_FRACTIONS:-1.0}"
+EVAL_SEED="${EVAL_SEED:-42}"
 DRY_RUN="${DRY_RUN:-0}"
 
 run_cmd() {
@@ -37,13 +38,14 @@ echo "[info] Datasets: ${DATASETS}"
 echo "[info] Seeds: ${SEEDS}"
 echo "[info] Label fractions: ${LABEL_FRACTIONS}"
 echo "[info] Checkpoint dir: ${CHECKPOINT_DIR}"
+echo "[info] Fixed eval seed: ${EVAL_SEED}"
 
 for dataset in ${DATASETS}; do
   for frac in ${LABEL_FRACTIONS}; do
     for seed in ${SEEDS}; do
       ckpt_name="$(checkpoint_name_for "${dataset}" "${MODE}" "${seed}" "${frac}")"
       ckpt_path="${CHECKPOINT_DIR}/${ckpt_name}"
-      run_cmd "STAGE2_CKPT='${ckpt_path}' bash '${REPO_ROOT}/scripts/eval_stage2_test.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}'"
+      run_cmd "STAGE2_CKPT='${ckpt_path}' bash '${REPO_ROOT}/scripts/eval_stage2_test.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}' eval.seed='${EVAL_SEED}'"
     done
   done
 done
