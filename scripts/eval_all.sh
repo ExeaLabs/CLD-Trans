@@ -45,7 +45,7 @@ for dataset in ${DATASETS}; do
     for seed in ${SEEDS}; do
       ckpt_name="$(checkpoint_name_for "${dataset}" "${MODE}" "${seed}" "${frac}")"
       ckpt_path="${CHECKPOINT_DIR}/${ckpt_name}"
-      run_cmd "STAGE2_CKPT='${ckpt_path}' bash '${REPO_ROOT}/scripts/eval_stage2_test.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}' eval.seed='${EVAL_SEED}'"
+      run_cmd "cd '${REPO_ROOT}' && STAGE2_CKPT='${ckpt_path}' bash '${REPO_ROOT}/scripts/eval_stage2_test.sh' '${dataset}' '${MODE}' seed='${seed}' train.label_fraction='${frac}' eval.seed='${EVAL_SEED}'"
     done
   done
 done
