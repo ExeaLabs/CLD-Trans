@@ -11,6 +11,7 @@ DRY_RUN="${DRY_RUN:-0}"
 # Sleep-EDF remains supported via DATASETS='chbmit ptbxl sleepedf' for expansion.
 DATASETS="${DATASETS:-chbmit ptbxl}"
 START_FROM_DATASET="${START_FROM_DATASET:-}"
+START_FROM_PHASE="${START_FROM_PHASE:-}"
 SEEDS="${SEEDS:-42 123 7}"
 LABEL_FRACTIONS="${LABEL_FRACTIONS:-1.0 0.1}"
 USE_STAGE2_FAST="${USE_STAGE2_FAST:-1}"
@@ -109,6 +110,67 @@ filter_datasets_from_start() {
   printf '%s\n' "${filtered[*]}"
 }
 
+phase_enabled() {
+  local phase="$1"
+  local requested_start="$2"
+  if [[ -z "${requested_start}" ]]; then
+    return 0
+  fi
+
+  local normalized_start="${requested_start}"
+  case "${normalized_start}" in
+    fewshot|few-shot)
+      normalized_start="few_shot"
+      ;;
+    zeroshot|zero-shot)
+      normalized_start="zero_shot"
+      ;;
+    mainresults|main-results)
+      normalized_start="main_results"
+      ;;
+    featurebaselines|feature-baselines)
+      normalized_start="feature_baselines"
+      ;;
+    inceptiontime|inceptiontime-baselines|inceptiontime_baselines)
+      normalized_start="inceptiontime_baselines"
+      ;;
+    externalbaselines|external-baselines)
+      normalized_start="external_baselines"
+      ;;
+  esac
+
+  local ordered_phases=(
+    validate_setup
+    main_results
+    few_shot
+    zero_shot
+    core_ablations
+    hparam_core
+    feature_baselines
+    inceptiontime_baselines
+    robustness
+    external_baselines
+    aggregation
+  )
+
+  local include=0
+  local candidate
+  for candidate in "${ordered_phases[@]}"; do
+    if [[ "${candidate}" == "${normalized_start}" ]]; then
+      include=1
+    fi
+    if [[ "${candidate}" == "${phase}" && "${include}" == "1" ]]; then
+      return 0
+    fi
+  done
+
+  if [[ "${include}" == "0" ]]; then
+    echo "[error] START_FROM_PHASE '${requested_start}' is not supported" >&2
+    exit 1
+  fi
+  return 1
+}
+
 if [[ -z "${STAGE1_CKPT}" ]]; then
   echo "[error] STAGE1_CKPT is required"
   echo "Example: STAGE1_CKPT=/scratch/cld-trans/checkpoints/stage1_single_gpu_best.pt bash scripts/run_neurips_stage2_core.sh"
@@ -122,11 +184,55 @@ fi
 
 DATASETS="$(filter_datasets_from_start "${START_FROM_DATASET}")"
 
+if ! phase_enabled "validate_setup" "${START_FROM_PHASE}"; then
+  VALIDATE_SETUP=0
+fi
+if ! phase_enabled "zero_shot" "${START_FROM_PHASE}"; then
+  RUN_ZERO_SHOT=0
+fi
+if ! phase_enabled "core_ablations" "${START_FROM_PHASE}"; then
+  RUN_CORE_ABLATIONS=0
+fi
+if ! phase_enabled "hparam_core" "${START_FROM_PHASE}"; then
+  RUN_HPARAM_CORE=0
+fi
+if ! phase_enabled "feature_baselines" "${START_FROM_PHASE}"; then
+  RUN_FEATURE_BASELINES=0
+fi
+if ! phase_enabled "inceptiontime_baselines" "${START_FROM_PHASE}"; then
+  RUN_INCEPTIONTIME_BASELINES=0
+fi
+if ! phase_enabled "robustness" "${START_FROM_PHASE}"; then
+  RUN_ROBUSTNESS=0
+fi
+if ! phase_enabled "external_baselines" "${START_FROM_PHASE}"; then
+  RUN_EXTERNAL_BASELINES=0
+fi
+if ! phase_enabled "aggregation" "${START_FROM_PHASE}"; then
+  RUN_AGGREGATION=0
+fi
+
+MAIN_SWEEP_ENABLED=0
+FEWSHOT_SWEEP_ENABLED=0
+if phase_enabled "main_results" "${START_FROM_PHASE}"; then
+  MAIN_SWEEP_ENABLED=1
+fi
+if phase_enabled "few_shot" "${START_FROM_PHASE}"; then
+  FEWSHOT_SWEEP_ENABLED=1
+fi
+
+if [[ "${MAIN_SWEEP_ENABLED}" != "1" && "${FEWSHOT_SWEEP_ENABLED}" != "1" && "${RUN_ZERO_SHOT}" != "1" ]]; then
+  RUN_MAIN_RESULTS=0
+fi
+
 echo "[info] Running NeurIPS Stage2 core workflow"
 echo "[info] Checkpoint: ${STAGE1_CKPT}"
 echo "[info] Datasets: ${DATASETS}"
 if [[ -n "${START_FROM_DATASET}" ]]; then
   echo "[info] Starting from dataset: $(normalize_dataset_name "${START_FROM_DATASET}")"
+fi
+if [[ -n "${START_FROM_PHASE}" ]]; then
+  echo "[info] Starting from phase: ${START_FROM_PHASE}"
 fi
 echo "[info] Seeds: ${SEEDS}"
 echo "[info] Label fractions: ${LABEL_FRACTIONS}"
@@ -139,7 +245,7 @@ fi
 
 if [[ "${RUN_MAIN_RESULTS}" == "1" ]]; then
   echo "[suite] Main Stage2 results (full + few-shot + optional zero-shot)"
-  run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' ZERO_SHOT_MAX_STEPS='${ZERO_SHOT_MAX_STEPS}' USE_STAGE2_FAST='${USE_STAGE2_FAST}' DATASETS='${DATASETS}' SEEDS='${SEEDS}' LABEL_FRACTIONS='${LABEL_FRACTIONS}' RUN_MAIN_SWEEP=1 RUN_FEWSHOT_SWEEP=1 RUN_ZERO_SHOT='${RUN_ZERO_SHOT}' RUN_SYNTHETIC=0 RUN_FIGURES=0 STAGE2_EXTRA_OVERRIDES='${STAGE2_PAPER_OVERRIDES}' bash '${REPO_ROOT}/scripts/run_from_stage2.sh'"
+  run_cmd "STAGE1_CKPT='${STAGE1_CKPT}' ZERO_SHOT_MAX_STEPS='${ZERO_SHOT_MAX_STEPS}' USE_STAGE2_FAST='${USE_STAGE2_FAST}' DATASETS='${DATASETS}' SEEDS='${SEEDS}' LABEL_FRACTIONS='${LABEL_FRACTIONS}' RUN_MAIN_SWEEP='${MAIN_SWEEP_ENABLED}' RUN_FEWSHOT_SWEEP='${FEWSHOT_SWEEP_ENABLED}' RUN_ZERO_SHOT='${RUN_ZERO_SHOT}' RUN_SYNTHETIC=0 RUN_FIGURES=0 STAGE2_EXTRA_OVERRIDES='${STAGE2_PAPER_OVERRIDES}' bash '${REPO_ROOT}/scripts/run_from_stage2.sh'"
 fi
 
 if [[ "${RUN_CORE_ABLATIONS}" == "1" ]]; then
