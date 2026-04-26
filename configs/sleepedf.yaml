@@ -37,6 +37,7 @@ train:
   log_interval: 50
   task_type: single_label
   val_split: 0.1
+  test_split: 0.1
   monitor: val_loss
   early_stopping:
     enabled: true

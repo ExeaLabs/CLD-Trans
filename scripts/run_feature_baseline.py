@@ -74,10 +74,10 @@ def _extract_features(loader: DataLoader, *, max_batches: int | None = None) -> 
     return torch.cat(features, dim=0), torch.cat(targets, dim=0)
 
 
-def _standardize(train_x: torch.Tensor, val_x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def _standardize(train_x: torch.Tensor, other_x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     mean = train_x.mean(dim=0, keepdim=True)
     std = train_x.std(dim=0, keepdim=True).clamp_min(1e-6)
-    return (train_x - mean) / std, (val_x - mean) / std
+    return (train_x - mean) / std, (other_x - mean) / std
 
 
 def _train_linear_baseline(
@@ -155,8 +155,11 @@ def _write_result_record(cfg: DictConfig, metrics: dict[str, Any]) -> None:
             "epochs": int(cfg.get("baseline", {}).get("epochs", 200)),
             "max_train_samples": int(cfg.get("baseline", {}).get("max_train_samples", 4096)),
             "max_val_samples": int(cfg.get("baseline", {}).get("max_val_samples", 2048)),
+            "max_test_samples": int(cfg.get("baseline", {}).get("max_test_samples", 2048)),
             "lr": float(cfg.get("baseline", {}).get("lr", 1.0e-2)),
             "weight_decay": float(cfg.get("baseline", {}).get("weight_decay", 1.0e-3)),
+            "val_split": float(cfg.train.get("val_split", 0.0)),
+            "test_split": float(cfg.train.get("test_split", 0.0)),
         },
         "metrics": metrics,
     }
@@ -168,19 +171,21 @@ def run_feature_baseline(cfg: DictConfig) -> dict[str, float]:
     seed = int(cfg.seed)
     torch.manual_seed(seed)
     dataset = build_dataset_from_config(cfg)
-    train_dataset, val_dataset = split_dataset(dataset, cfg)
-    if val_dataset is None:
-        raise ValueError("feature baseline requires train.val_split > 0")
+    train_dataset, val_dataset, test_dataset = split_dataset(dataset, cfg)
+    if val_dataset is None or test_dataset is None:
+        raise ValueError("feature baseline requires train.val_split > 0 and train.test_split > 0")
     train_dataset = _subset_training_dataset(train_dataset, cfg)
 
     baseline_cfg = cfg.get("baseline", {})
     max_train_samples = int(baseline_cfg.get("max_train_samples", 4096))
     max_val_samples = int(baseline_cfg.get("max_val_samples", 2048))
+    max_test_samples = int(baseline_cfg.get("max_test_samples", 2048))
     batch_size = int(baseline_cfg.get("batch_size", 256))
     num_workers = int(baseline_cfg.get("num_workers", 4))
 
     train_dataset = _limit_dataset(train_dataset, max_train_samples, seed=seed)
     val_dataset = _limit_dataset(val_dataset, max_val_samples, seed=seed + 1)
+    test_dataset = _limit_dataset(test_dataset, max_test_samples, seed=seed + 2)
     loader_kwargs = {
         "batch_size": batch_size,
         "num_workers": num_workers,
@@ -189,14 +194,17 @@ def run_feature_baseline(cfg: DictConfig) -> dict[str, float]:
     }
     train_loader = DataLoader(train_dataset, shuffle=False, **loader_kwargs)
     val_loader = DataLoader(val_dataset, shuffle=False, **loader_kwargs)
+    test_loader = DataLoader(test_dataset, shuffle=False, **loader_kwargs)
 
-    train_x, train_y = _extract_features(train_loader)
+    train_x_raw, train_y = _extract_features(train_loader)
     val_x, val_y = _extract_features(val_loader)
-    train_x, val_x = _standardize(train_x, val_x)
+    test_x, test_y = _extract_features(test_loader)
+    train_x, val_x = _standardize(train_x_raw, val_x)
+    _, test_x = _standardize(train_x_raw, test_x)
 
     task_type = str(cfg.train.get("task_type", "single_label"))
     num_classes = int(cfg.model.num_classes)
-    _, metrics = _train_linear_baseline(
+    model, metrics = _train_linear_baseline(
         train_x,
         train_y,
         val_x,
@@ -207,8 +215,14 @@ def run_feature_baseline(cfg: DictConfig) -> dict[str, float]:
         weight_decay=float(baseline_cfg.get("weight_decay", 1.0e-3)),
         task_type=task_type,
     )
+    with torch.no_grad():
+        test_logits = model(test_x.to(next(model.parameters()).device)).cpu()
+    test_metrics = classification_metrics(test_logits, test_y, task_type=task_type, num_classes=num_classes)
+    metrics = {f"val_{key}": value for key, value in metrics.items()}
+    metrics.update({f"test_{key}": value for key, value in test_metrics.items()})
     metrics["train_samples"] = float(train_x.shape[0])
     metrics["val_samples"] = float(val_x.shape[0])
+    metrics["test_samples"] = float(test_x.shape[0])
     print(OmegaConf.to_yaml(metrics))
     _write_result_record(cfg, metrics)
     return metrics

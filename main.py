@@ -158,9 +158,19 @@ def _load_pretrained_weights(model: CLDTransformer, cfg: DictConfig, *, is_main:
     checkpoint_path = cfg.train.get("pretrained_checkpoint")
     if checkpoint_path is None:
         return
-    path = Path(str(checkpoint_path))
+    _load_checkpoint_weights(model, Path(str(checkpoint_path)), is_main=is_main, label="pretrained weights")
+
+
+def _load_checkpoint_weights(
+    model: CLDTransformer,
+    path: Path,
+    *,
+    is_main: bool,
+    label: str,
+) -> None:
+    path = Path(str(path))
     if not path.exists():
-        raise FileNotFoundError(f"pretrained checkpoint not found: {path}")
+        raise FileNotFoundError(f"{label} not found: {path}")
 
     payload = torch.load(path, map_location="cpu")
     state_dict = payload["model"] if isinstance(payload, dict) and "model" in payload else payload
@@ -181,7 +191,7 @@ def _load_pretrained_weights(model: CLDTransformer, cfg: DictConfig, *, is_main:
     if is_main:
         loaded = len(compatible)
         skipped = len(incompatible_shape) + len(not_in_model)
-        print(f"Loaded pretrained weights from {path} ({loaded} tensors, skipped {skipped})")
+        print(f"Loaded {label} from {path} ({loaded} tensors, skipped {skipped})")
         if incompatible_shape:
             print(f"Skipped due to shape mismatch: {len(incompatible_shape)}")
         if not_in_model:
@@ -195,6 +205,13 @@ def _load_pretrained_weights(model: CLDTransformer, cfg: DictConfig, *, is_main:
             print(f"Missing keys after load: {len(missing_keys)}")
         if unexpected_keys:
             print(f"Unexpected keys after load: {len(unexpected_keys)}")
+
+
+def _stage2_eval_checkpoint_path(cfg: DictConfig) -> Path:
+    eval_cfg = cfg.get("eval")
+    if eval_cfg is not None and eval_cfg.get("checkpoint") not in {None, "null"}:
+        return Path(str(eval_cfg.get("checkpoint")))
+    return checkpoint_path_for(cfg)
 
 
 def _configure_stage2_trainable_params(model: CLDTransformer, mode: str) -> None:
@@ -335,19 +352,36 @@ def run_stage2_zero_shot(cfg: DictConfig) -> dict[str, float]:
 def split_dataset(
     dataset: Dataset[Any],
     cfg: DictConfig,
-) -> tuple[Dataset[Any], Dataset[Any] | None]:
+) -> tuple[Dataset[Any], Dataset[Any] | None, Dataset[Any] | None]:
     val_split = float(cfg.train.get("val_split", 0.0))
-    if val_split <= 0.0:
-        return dataset, None
+    test_split = float(cfg.train.get("test_split", 0.0))
+    if val_split < 0.0 or test_split < 0.0:
+        raise ValueError("train.val_split and train.test_split must be >= 0")
+    if val_split + test_split >= 1.0:
+        raise ValueError("train.val_split + train.test_split must be < 1.0")
+    if val_split <= 0.0 and test_split <= 0.0:
+        return dataset, None, None
     dataset_len = len(dataset)
     if dataset_len < 2:
-        raise ValueError("validation split requires at least 2 samples")
-    val_size = max(1, int(round(dataset_len * val_split)))
-    val_size = min(val_size, dataset_len - 1)
-    train_size = dataset_len - val_size
+        raise ValueError("dataset splitting requires at least 2 samples")
+    val_size = 0 if val_split <= 0.0 else max(1, int(round(dataset_len * val_split)))
+    test_size = 0 if test_split <= 0.0 else max(1, int(round(dataset_len * test_split)))
+    while val_size + test_size >= dataset_len:
+        if val_size >= test_size and val_size > 0:
+            val_size -= 1
+        elif test_size > 0:
+            test_size -= 1
+        else:
+            break
+    train_size = dataset_len - val_size - test_size
+    if train_size <= 0:
+        raise ValueError("dataset split leaves no training samples")
     generator = torch.Generator().manual_seed(int(cfg.seed))
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
-    return train_dataset, val_dataset
+    splits = random_split(dataset, [train_size, val_size, test_size], generator=generator)
+    train_dataset = splits[0]
+    val_dataset = None if val_size == 0 else splits[1]
+    test_dataset = None if test_size == 0 else splits[2]
+    return train_dataset, val_dataset, test_dataset
 
 
 def maybe_make_early_stopper(cfg: DictConfig, has_validation: bool) -> EarlyStopping | None:
@@ -419,6 +453,7 @@ def _write_result_record(cfg: DictConfig, *, run_kind: str, metrics: dict[str, A
             "precision": str(cfg.train.get("precision", "fp32")),
             "warmup_steps": int(cfg.train.get("warmup_steps", 0)),
             "val_split": float(cfg.train.get("val_split", 0.0)),
+            "test_split": float(cfg.train.get("test_split", 0.0)),
             "max_steps": None if cfg.train.get("max_steps") is None else int(cfg.train.get("max_steps")),
             "max_train_steps": None
             if cfg.train.get("max_train_steps") is None
@@ -426,6 +461,9 @@ def _write_result_record(cfg: DictConfig, *, run_kind: str, metrics: dict[str, A
             "max_val_steps": None
             if cfg.train.get("max_val_steps") is None
             else int(cfg.train.get("max_val_steps")),
+            "max_test_steps": None
+            if cfg.train.get("max_test_steps") is None
+            else int(cfg.train.get("max_test_steps")),
             "early_stopping": OmegaConf.to_container(cfg.train.get("early_stopping", {}), resolve=True),
             "pretrained_checkpoint": None
             if cfg.train.get("pretrained_checkpoint") in {None, "null"}
@@ -566,10 +604,11 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
     distributed, rank = _distributed_state()
     is_main = not distributed or rank == 0
     dataset = build_dataset_from_config(cfg)
-    train_dataset, val_dataset = split_dataset(dataset, cfg)
+    train_dataset, val_dataset, test_dataset = split_dataset(dataset, cfg)
     train_dataset = _subset_training_dataset(train_dataset, cfg)
     loader = build_loader(train_dataset, cfg, device, shuffle=True, distributed=distributed)
     val_loader = None if val_dataset is None else build_loader(val_dataset, cfg, device, shuffle=False, distributed=distributed)
+    test_loader = None if test_dataset is None else build_loader(test_dataset, cfg, device, shuffle=False, distributed=distributed)
     model = build_model(cfg).to(device)
     train_mode = str(cfg.train.get("mode", "fine_tune"))
     _load_pretrained_weights(model, cfg, is_main=is_main)
@@ -605,8 +644,13 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
     max_steps = None if cfg.train.get("max_steps") is None else int(cfg.train.max_steps)
     max_train_steps = cfg.train.get("max_train_steps")
     max_val_steps = cfg.train.get("max_val_steps")
+    max_test_steps = cfg.train.get("max_test_steps")
     max_train_steps_value = max_steps if max_train_steps is None else int(max_train_steps)
     max_val_steps_value = max_steps if max_val_steps is None else int(max_val_steps)
+    max_test_steps_value = max_val_steps_value if max_test_steps is None else int(max_test_steps)
+    best_state_dict: dict[str, torch.Tensor] | None = None
+    monitor_mode = str(cfg.train.get("early_stopping", {}).get("mode", "min")).lower()
+    best_monitor_value = -math.inf if monitor_mode == "max" else math.inf
     for epoch_index in range(epochs):
         if distributed and isinstance(loader.sampler, DistributedSampler):
             loader.sampler.set_epoch(epoch_index)
@@ -663,10 +707,19 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
             monitored_value = last_metrics.get(monitor_metric)
             if monitored_value is None:
                 raise ValueError(f"monitor metric '{monitor_metric}' not found in epoch metrics")
+            monitored_float = float(monitored_value)
+            improved_for_selection = (
+                monitored_float > best_monitor_value if monitor_mode == "max" else monitored_float < best_monitor_value
+            )
+            if improved_for_selection:
+                best_monitor_value = monitored_float
+                best_state_dict = {
+                    key: value.detach().cpu().clone() for key, value in model_for_ops.state_dict().items()
+                }
             if early_stopper is None:
                 continue
             if is_main:
-                improved, should_stop = early_stopper.update(float(monitored_value))
+                improved, should_stop = early_stopper.update(monitored_float)
             else:
                 improved, should_stop = False, False
             if distributed:
@@ -684,7 +737,80 @@ def run_stage2(cfg: DictConfig) -> dict[str, float]:
                     f"epoch {epoch_index + 1} on {monitor_metric}={monitored_value:.6f}"
                 )
                 break
+    if best_state_dict is not None:
+        model_for_ops.load_state_dict(best_state_dict)
+    test_metrics = None
+    if test_loader is not None:
+        test_metrics = evaluate_stage2_epoch(
+            model,
+            test_loader,
+            device,
+            task_type=task_type,
+            focal_gamma=focal_gamma_value,
+            class_weights=class_weights_value,
+            mode=train_mode,
+            max_steps=max_test_steps_value,
+            epoch=epochs,
+            num_epochs=epochs,
+            precision=str(cfg.train.get("precision", "fp32")),
+            log_interval=int(cfg.train.get("log_interval", 20)),
+            show_progress=is_main,
+        )
+        test_metrics = _maybe_allreduce_metrics(test_metrics, device)
+        last_metrics.update({f"test_{key}": value for key, value in test_metrics.items() if key != "steps"})
+        if "steps" in test_metrics:
+            last_metrics["test_steps"] = test_metrics["steps"]
+        if is_main:
+            print(OmegaConf.to_yaml({"final_test": True, **{f"test_{key}": value for key, value in test_metrics.items()}}))
     return last_metrics
+
+
+def run_stage2_test(cfg: DictConfig) -> dict[str, float]:
+    device = _resolve_device(cfg)
+    distributed, rank = _distributed_state()
+    is_main = not distributed or rank == 0
+    dataset = build_dataset_from_config(cfg)
+    _, _, test_dataset = split_dataset(dataset, cfg)
+    if test_dataset is None:
+        raise ValueError("stage2_test requires train.test_split > 0")
+
+    test_loader = build_loader(test_dataset, cfg, device, shuffle=False, distributed=distributed)
+    model = build_model(cfg).to(device)
+    checkpoint_path = _stage2_eval_checkpoint_path(cfg)
+    _load_checkpoint_weights(model, checkpoint_path, is_main=is_main, label="Stage 2 evaluation checkpoint")
+    model = _maybe_wrap_ddp(model, device)
+
+    task_type = str(cfg.train.get("task_type", "single_label"))
+    focal_gamma = cfg.train.get("focal_gamma")
+    focal_gamma_value = None if focal_gamma is None else float(focal_gamma)
+    class_weights_cfg = cfg.train.get("class_weights")
+    class_weights_value = None if class_weights_cfg is None else [float(value) for value in class_weights_cfg]
+    max_steps = None if cfg.train.get("max_steps") is None else int(cfg.train.max_steps)
+    max_test_steps = cfg.train.get("max_test_steps")
+    max_test_steps_value = max_steps if max_test_steps is None else int(max_test_steps)
+
+    test_metrics = evaluate_stage2_epoch(
+        model,
+        test_loader,
+        device,
+        task_type=task_type,
+        focal_gamma=focal_gamma_value,
+        class_weights=class_weights_value,
+        mode=str(cfg.train.get("mode", "fine_tune")),
+        max_steps=max_test_steps_value,
+        epoch=0,
+        num_epochs=0,
+        precision=str(cfg.train.get("precision", "fp32")),
+        log_interval=int(cfg.train.get("log_interval", 20)),
+        show_progress=is_main,
+    )
+    test_metrics = _maybe_allreduce_metrics(test_metrics, device)
+    metrics = {f"test_{key}": value for key, value in test_metrics.items() if key != "steps"}
+    if "steps" in test_metrics:
+        metrics["test_steps"] = test_metrics["steps"]
+    if is_main:
+        print(OmegaConf.to_yaml({"final_test_only": True, **metrics}))
+    return metrics
 
 
 def _main(cfg: DictConfig) -> None:
@@ -708,6 +834,9 @@ def _main(cfg: DictConfig) -> None:
             else:
                 metrics = run_stage2(cfg)
                 _write_result_record(cfg, run_kind="stage2", metrics=metrics)
+        elif mode == "stage2_test":
+            metrics = run_stage2_test(cfg)
+            _write_result_record(cfg, run_kind="stage2_test", metrics=metrics)
         else:
             raise ValueError(f"unknown mode: {mode}")
     finally:

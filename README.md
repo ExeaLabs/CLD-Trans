@@ -49,9 +49,13 @@ bash scripts/train_stage1.sh
 # Downstream evaluation skeleton
 bash scripts/train_stage2.sh chbmit fine_tune
 
+# Evaluate a finished Stage 2 checkpoint on the held-out test split only
+STAGE2_CKPT=/scratch/cld-trans/checkpoints/stage_best.pt bash scripts/eval_stage2_test.sh chbmit fine_tune
+
 # Safer Stage 2+ NeurIPS-main suite after Stage 1 is complete
 # Defaults: CHB-MIT + PTB-XL, seeds 42/123/7, 8-epoch cap, 80 train batches/epoch,
-# feature-linear + InceptionTime baselines, tiny CHB-MIT/PTB-XL LR sweep, early stopping, uncapped zero-shot, ablations, and validation metrics.
+# feature-linear + InceptionTime baselines, tiny CHB-MIT/PTB-XL LR sweep, early stopping,
+# uncapped zero-shot, ablations, and held-out test metrics from explicit train/val/test splits.
 STAGE1_CKPT=/scratch/cld-trans/checkpoints/stage1_single_gpu_best.pt bash scripts/run_neurips_studies.sh
 
 # Emergency shorter run if server time becomes tight

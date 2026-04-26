@@ -1,6 +1,10 @@
 seed: 42
 mode: synthetic_smoke
 
+eval:
+  checkpoint: null
+  max_steps: null
+
 paths:
   scratch_root: /scratch/cld-trans
   data_root: /scratch/cld-trans/datasets
@@ -53,6 +57,7 @@ train:
   max_steps: 5
   epochs: 1
   val_split: 0.0
+  test_split: 0.0
   monitor: val_loss
   best_checkpoint_name: stage_best.pt
   precision: fp32

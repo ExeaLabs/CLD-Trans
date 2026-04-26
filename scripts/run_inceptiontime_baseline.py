@@ -139,9 +139,9 @@ def _train(cfg: DictConfig) -> dict[str, float]:
     torch.manual_seed(seed)
     device = torch.device(str(cfg.train.device) if torch.cuda.is_available() else "cpu")
     dataset = build_dataset_from_config(cfg)
-    train_dataset, val_dataset = split_dataset(dataset, cfg)
-    if val_dataset is None:
-        raise ValueError("InceptionTime baseline requires train.val_split > 0")
+    train_dataset, val_dataset, test_dataset = split_dataset(dataset, cfg)
+    if val_dataset is None or test_dataset is None:
+        raise ValueError("InceptionTime baseline requires train.val_split > 0 and train.test_split > 0")
     train_dataset = _subset_training_dataset(train_dataset, cfg)
 
     baseline_cfg = cfg.get("baseline", {})
@@ -155,8 +155,14 @@ def _train(cfg: DictConfig) -> dict[str, float]:
         None if baseline_cfg.get("max_val_samples") is None else int(baseline_cfg.get("max_val_samples")),
         seed=seed + 1,
     )
+    test_dataset = _limit_dataset(
+        test_dataset,
+        None if baseline_cfg.get("max_test_samples") is None else int(baseline_cfg.get("max_test_samples", baseline_cfg.get("max_val_samples", 2048))),
+        seed=seed + 2,
+    )
     train_loader = _build_loader(train_dataset, cfg, shuffle=True)
     val_loader = _build_loader(val_dataset, cfg, shuffle=False)
+    test_loader = _build_loader(test_dataset, cfg, shuffle=False)
 
     model = InceptionTimeBaseline(
         in_channels=int(cfg.model.num_channels),
@@ -228,6 +234,15 @@ def _train(cfg: DictConfig) -> dict[str, float]:
                 break
     if best_state is not None:
         model.load_state_dict(best_state)
+    test_metrics = _evaluate(
+        model,
+        test_loader,
+        device,
+        task_type=task_type,
+        max_steps=max_val_steps_value,
+        precision=precision,
+    )
+    best_metrics.update({f"test_{key}": value for key, value in test_metrics.items()})
     return best_metrics
 
 
@@ -251,6 +266,11 @@ def _write_result_record(cfg: DictConfig, metrics: dict[str, Any]) -> None:
         "train_mode": "inceptiontime",
         "baseline": "InceptionTime",
         "citation": "Fawaz et al., InceptionTime: Finding AlexNet for Time Series Classification, DMKD 2020",
+        "train": {
+            "epochs": int(cfg.get("baseline", {}).get("epochs", cfg.train.epochs)),
+            "val_split": float(cfg.train.get("val_split", 0.0)),
+            "test_split": float(cfg.train.get("test_split", 0.0)),
+        },
         "metrics": metrics,
     }
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
