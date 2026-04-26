@@ -76,6 +76,16 @@ def _distributed_state() -> tuple[bool, int]:
     return True, dist.get_rank()
 
 
+def _describe_dataset(dataset: Dataset[Any]) -> str:
+    parts = [f"type={type(dataset).__name__}", f"len={len(dataset)}"]
+    dataset_path = getattr(dataset, "path", None)
+    if dataset_path is not None:
+        parts.append(f"path={dataset_path}")
+    if isinstance(dataset, Subset):
+        parts.append(f"base_type={type(dataset.dataset).__name__}")
+    return ", ".join(parts)
+
+
 def _maybe_allreduce_metrics(metrics: dict[str, float], device: torch.device) -> dict[str, float]:
     distributed, _ = _distributed_state()
     if not distributed:
@@ -363,7 +373,10 @@ def split_dataset(
         return dataset, None, None
     dataset_len = len(dataset)
     if dataset_len < 2:
-        raise ValueError("dataset splitting requires at least 2 samples")
+        raise ValueError(
+            "dataset splitting requires at least 2 samples; "
+            f"resolved dataset: {_describe_dataset(dataset)}"
+        )
     val_size = 0 if val_split <= 0.0 else max(1, int(round(dataset_len * val_split)))
     test_size = 0 if test_split <= 0.0 else max(1, int(round(dataset_len * test_split)))
     while val_size + test_size >= dataset_len:

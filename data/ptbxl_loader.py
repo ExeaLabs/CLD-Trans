@@ -13,6 +13,10 @@ PTBXL_CLASSES = ["NORM", "MI", "STTC", "CD", "HYP"]
 PTBXL_CLASS_TO_INDEX = {name: index for index, name in enumerate(PTBXL_CLASSES)}
 
 
+def _has_raw_ptbxl_files(root: Path) -> bool:
+	return (root / "ptbxl_database.csv").exists() and (root / "scp_statements.csv").exists()
+
+
 def _load_diagnostic_map(statements_path: Path) -> dict[str, str]:
 	diagnostic_map: dict[str, str] = {}
 	with statements_path.open("r", encoding="utf-8", newline="") as handle:
@@ -96,18 +100,20 @@ class PTBXLDataset(LazySignalDataset):
 		if not (0.0 < float(majority_keep_ratio) <= 1.0):
 			raise ValueError("majority_keep_ratio must be in (0, 1]")
 
-		tensor_dataset = maybe_tensor_dataset(
-			path,
-			num_channels=num_channels,
-			num_steps=num_steps,
-			sample_rate=sample_rate,
-		)
+		root = Path(path)
+		tensor_dataset = None
+		if root.is_file() or not _has_raw_ptbxl_files(root):
+			tensor_dataset = maybe_tensor_dataset(
+				path,
+				num_channels=num_channels,
+				num_steps=num_steps,
+				sample_rate=sample_rate,
+			)
 		self._tensor_dataset = tensor_dataset
 		if tensor_dataset is not None:
-			self.path = Path(path)
+			self.path = root
 			return
 
-		root = Path(path)
 		if not root.exists():
 			raise FileNotFoundError(f"dataset path not found: {root}")
 		records = _load_records(root, sample_rate)

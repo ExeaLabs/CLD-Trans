@@ -10,6 +10,7 @@ DRY_RUN="${DRY_RUN:-0}"
 # Safer NeurIPS-main scope: CHB-MIT headline + compact PTB-XL transfer.
 # Sleep-EDF remains supported via DATASETS='chbmit ptbxl sleepedf' for expansion.
 DATASETS="${DATASETS:-chbmit ptbxl}"
+START_FROM_DATASET="${START_FROM_DATASET:-}"
 SEEDS="${SEEDS:-42 123 7}"
 LABEL_FRACTIONS="${LABEL_FRACTIONS:-1.0 0.1}"
 USE_STAGE2_FAST="${USE_STAGE2_FAST:-1}"
@@ -65,6 +66,49 @@ checkpoint_name_for() {
   echo "${dataset}_${mode}_seed${seed}_label${frac_tag}_stage_best.pt"
 }
 
+normalize_dataset_name() {
+  local dataset="$1"
+  case "${dataset}" in
+    ptb-xl)
+      echo "ptbxl"
+      ;;
+    *)
+      echo "${dataset}"
+      ;;
+  esac
+}
+
+filter_datasets_from_start() {
+  local requested_start="$1"
+  if [[ -z "${requested_start}" ]]; then
+    echo "${DATASETS}"
+    return 0
+  fi
+
+  local normalized_start
+  normalized_start="$(normalize_dataset_name "${requested_start}")"
+  local filtered=()
+  local include=0
+  local dataset
+  for dataset in ${DATASETS}; do
+    local normalized_dataset
+    normalized_dataset="$(normalize_dataset_name "${dataset}")"
+    if [[ "${normalized_dataset}" == "${normalized_start}" ]]; then
+      include=1
+    fi
+    if [[ "${include}" == "1" ]]; then
+      filtered+=("${normalized_dataset}")
+    fi
+  done
+
+  if [[ ${#filtered[@]} -eq 0 ]]; then
+    echo "[error] START_FROM_DATASET '${requested_start}' was not found in DATASETS='${DATASETS}'" >&2
+    return 1
+  fi
+
+  printf '%s\n' "${filtered[*]}"
+}
+
 if [[ -z "${STAGE1_CKPT}" ]]; then
   echo "[error] STAGE1_CKPT is required"
   echo "Example: STAGE1_CKPT=/scratch/cld-trans/checkpoints/stage1_single_gpu_best.pt bash scripts/run_neurips_stage2_core.sh"
@@ -76,9 +120,14 @@ if [[ "${DRY_RUN}" != "1" && ! -f "${STAGE1_CKPT}" ]]; then
   exit 1
 fi
 
+DATASETS="$(filter_datasets_from_start "${START_FROM_DATASET}")"
+
 echo "[info] Running NeurIPS Stage2 core workflow"
 echo "[info] Checkpoint: ${STAGE1_CKPT}"
 echo "[info] Datasets: ${DATASETS}"
+if [[ -n "${START_FROM_DATASET}" ]]; then
+  echo "[info] Starting from dataset: $(normalize_dataset_name "${START_FROM_DATASET}")"
+fi
 echo "[info] Seeds: ${SEEDS}"
 echo "[info] Label fractions: ${LABEL_FRACTIONS}"
 echo "[info] Stage2 paper overrides: ${STAGE2_PAPER_OVERRIDES}"
