@@ -41,7 +41,7 @@ def test_ptbxl_dataset_prefers_raw_files_over_pt_fallback(tmp_path: Path) -> Non
     with (tmp_path / "scp_statements.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["scp_code", "diagnostic", "diagnostic_class"])
         writer.writeheader()
-        writer.writerow({"scp_code": "NORM", "diagnostic": "1", "diagnostic_class": "NORM"})
+        writer.writerow({"scp_code": "NORM", "diagnostic": "1.0", "diagnostic_class": "NORM"})
 
     with (tmp_path / "ptbxl_database.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["scp_codes", "filename_hr", "filename_lr"])

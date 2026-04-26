@@ -22,7 +22,11 @@ def _load_diagnostic_map(statements_path: Path) -> dict[str, str]:
 	with statements_path.open("r", encoding="utf-8", newline="") as handle:
 		reader = csv.DictReader(handle)
 		for row in reader:
-			if row.get("diagnostic") != "1":
+			try:
+				is_diagnostic = float(row.get("diagnostic", "0") or 0.0) > 0.0
+			except ValueError:
+				is_diagnostic = False
+			if not is_diagnostic:
 				continue
 			diagnostic_class = row.get("diagnostic_class")
 			if diagnostic_class in PTBXL_CLASS_TO_INDEX:
