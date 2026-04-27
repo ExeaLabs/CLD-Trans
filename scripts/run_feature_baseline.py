@@ -7,6 +7,7 @@ import contextlib
 import json
 import math
 from pathlib import Path
+import sys
 from typing import Any
 
 import torch
@@ -17,6 +18,10 @@ try:
     import hydra
 except Exception:  # pragma: no cover
     hydra = None
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from data import build_dataset_from_config
 from engine.evaluator import classification_metrics
